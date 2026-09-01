@@ -1,0 +1,193 @@
+# Tool / Function Calling 定义
+
+## 1. Tool 设计原则
+
+- Tool 名称固定、版本化、默认不可见；每轮由 Capability/Tool Policy 计算 Allowed Tool Set，只把集合内 ToolCallback 注册给本次 Agent Run。
+- 模型侧 Tool 可见性不是最终安全边界。即使 Tool 未暴露给模型，Gateway 仍必须验证 `(toolName, version)` 属于当前 Allowed Tool Set。
+- Tool 参数不包含 `userId`、role、认证等级、确认状态、风险结果等安全事实，这些只来自服务端上下文。
+- Tool 不接收 SQL、URL、Java 类名、任意表达式、任意字段名或下一个 Tool 名称。
+- 业务资源使用服务端 UUID，且必须来自当前会话中已授权、已展示的证据锚点；不接受模型凭空生成的 ID。
+- 所有字段启用 allowlist 和 `additionalProperties=false`；字符串有长度/字符集约束，金额使用十进制字符串。
+- 查询 Tool 也要校验权限和所有权。写 Tool 只创建操作单或恢复相同幂等结果，不直接修改数据库。
+- 跨场景通过 Planner 组合原子 Tool，不提供 `execute_anything`、`run_sql`、`call_url` 或万能 Tool。
+
+## 2. 统一返回信封
+
+```json
+{
+  "tool": "transfer.create",
+  "version": "1.0",
+  "status": "AWAITING_CONFIRMATION",
+  "traceId": "8d58...",
+  "data": {},
+  "evidence": [
+    {
+      "evidenceId": "ev_...",
+      "type": "TRANSFER_PREVIEW",
+      "generatedAt": "2026-09-01T02:00:00Z",
+      "expiresAt": "2026-09-01T02:05:00Z"
+    }
+  ],
+  "operation": {
+    "operationId": "op_...",
+    "state": "AWAITING_CONFIRMATION",
+    "summary": "从尾号 8899 账户向张伟转账 CNY 800.00，手续费 CNY 0.00",
+    "expiresAt": "2026-09-01T02:05:00Z",
+    "requiresAal": "AAL1"
+  },
+  "decision": {
+    "decisionId": "rd_...",
+    "outcome": "REQUIRE_CONFIRMATION",
+    "reasonCodes": ["WRITE_ACTION_CONFIRMATION_REQUIRED"]
+  },
+  "error": null
+}
+```
+
+`status` 只允许：
+
+- `SUCCESS`
+- `NEEDS_CLARIFICATION`
+- `AWAITING_STEP_UP`
+- `AWAITING_CONFIRMATION`
+- `DENIED`
+- `FAILED`
+
+Tool 结果中的 `summary`、`reasons` 和 `evidence` 由服务端模板生成，不使用模型自由文本生成。模型可以转述，但最终回答必须保留 Trace ID/操作 ID，并受 Grounding Validator 检查。
+
+## 3. Tool 注册元数据
+
+每个 Tool 在注册表中声明：
+
+```text
+name, version, mode(READ/WRITE), inputSchemaHash, outputSchemaHash,
+requiredPermission, minimumAal, confirmationPolicy,
+riskPolicySet, timeout, maxCallsPerRun, enabledProfiles
+```
+
+Tool Registry 启动时校验重复名称、版本、Schema hash 和实现签名；运行时只按 `(name, version)` 精确匹配。未知或已下线版本返回 `TOOL_NOT_ALLOWED` 并写安全审计。
+
+Capability Policy 的输出不是一个裸字符串列表，而是包含 `decisionId`、`policyVersion`、`snapshotHash`、`expiresAt` 和精确 `(name, version)` 集合的服务端对象。Agent 暴露 Tool 前检查一次，Gateway 执行前再检查一次；执行检查不能被 ToolCallbackProvider、模型输出或请求参数覆盖。
+
+## 4. Tool 清单
+
+### 4.1 账户、收款人与账单（只读）
+
+| Tool | 主要输入 | 确定性输出 | 权限/约束 |
+|---|---|---|---|
+| `account.list_owned` v1.0 | `includeClosed=false` | 本人账户 ID、别名、掩码、类型、币种、状态 | `ACCOUNT_VIEW`；最多 20 条 |
+| `account.get_summary` v1.0 | `accountId` | 账面/可用余额、当日转账剩余额度、数据时间 | `ACCOUNT_VIEW` + 所有权；ID 必须是已授权锚点 |
+| `beneficiary.search_owned` v1.0 | `query`, `currency?`, `limit<=10` | 本人收款人候选、掩码、是否可信、最近使用时间 | `TRANSFER_CREATE` + 所有权；模糊匹配无唯一结果时要求澄清 |
+| `bill.list_transactions` v1.0 | `accountId`, `dateFrom`, `dateTo`, `category?`, `direction?`, `pageToken?`, `pageSize<=100` | 脱敏流水页与 evidence IDs | `TRANSACTION_VIEW` + 账户所有权；跨度最多 366 天 |
+| `bill.analyze_spending` v1.0 | `accountIds[]`, `dateFrom`, `dateTo`, `compareMode`, `groupBy` | 收支总额、分类、商户、趋势、对比、样本数 | Java 计算；账户均属于本人；无样本明确返回 |
+| `bill.detect_recurring` v1.0 | `accountIds[]`, `lookbackDays(30..366)` | 周期扣款候选、置信分、周期、估计年成本、证据流水 | 规则算法；不自动创建/取消订阅 |
+
+`compareMode`: `NONE`、`PREVIOUS_PERIOD`、`PREVIOUS_MONTH`。`groupBy`: `CATEGORY`、`MERCHANT`、`MONTH`。所有统计金额由 Tool 计算，不允许 Agent 将流水列表自行求和作为最终事实。
+
+### 4.2 智能转账
+
+| Tool | 主要输入 | 确定性输出 | 权限/确认 |
+|---|---|---|---|
+| `transfer.preview` v1.0 | `sourceAccountId`, `beneficiaryId`, `amount`, `currency`, `purpose?` | 收付款掩码、金额、手续费、预计余额、限额占用、预览 ID/有效期 | `TRANSFER_CREATE`；本人账户/收款人；只读但执行完整预检 |
+| `transfer.create` v1.0 | `previewId`, `sourceAccountId`, `beneficiaryId`, `amount`, `currency`, `purpose?` | 不直接转账；创建/返回操作单与确认卡 | `TRANSFER_CREATE`；始终确认；按风险可能先要求 AAL2 |
+
+关键参数规则：
+
+- `amount`: 字符串，正数，最多 2 位小数，`0.01..99999999.99`；解析为 BigDecimal。
+- `currency`: 当前仅 `CNY`，必须与来源账户、收款人和 preview 一致。
+- `purpose`: 可选，1..60 字，经过字符和注入标签处理，只作备注，绝不作指令。
+- `previewId`: 5 分钟有效，绑定用户和规范化参数；预览与创建参数不一致时拒绝。
+
+执行成功后返回服务端转账回执、余额证据和审计 Trace；模型不能自行宣布“已到账”。
+
+### 4.3 理财
+
+| Tool | 主要输入 | 确定性输出 | 权限/确认 |
+|---|---|---|---|
+| `investment.list_products` v1.0 | `riskLevelMax?`, `termDaysMax?`, `amount?`, `saleStatus=ON_SALE`, `limit<=20` | 产品 ID、风险级别、期限、门槛、模拟收益说明 | `INVESTMENT_VIEW`；只返回沙箱产品 |
+| `investment.get_portfolio` v1.0 | `includeClosed=false` | 本人持仓、成本、产品风险、数据时间 | `INVESTMENT_VIEW` + 所有权 |
+| `investment.check_suitability` v1.0 | `productId`, `paymentAccountId`, `amount`, `currency` | 用户风险快照、产品快照、门槛/余额/适当性结论、检查 ID | `INVESTMENT_BUY`；本人账户；不改变状态 |
+| `investment.purchase` v1.0 | `suitabilityCheckId`, `productId`, `paymentAccountId`, `amount`, `currency` | 创建/返回购买操作单与确认卡 | `INVESTMENT_BUY`；始终 AAL2 + 确认 |
+
+风险等级不匹配、问卷过期、产品停售、未达到起购/递增金额或余额不足均由服务端拒绝。`expectedYieldText` 是模拟产品说明，不由 LLM 推导保本或承诺收益。
+
+### 4.4 卡片管理
+
+| Tool | 主要输入 | 确定性输出 | 权限/确认 |
+|---|---|---|---|
+| `card.list_owned` v1.0 | `includeClosed=false` | 卡片 ID、掩码、类型、状态、关联账户掩码 | `CARD_VIEW` + 所有权 |
+| `card.get_controls` v1.0 | `cardId` | 线上/境外开关、单笔/日限额、版本 | `CARD_VIEW` + 所有权 |
+| `card.update_status` v1.0 | `cardId`, `targetStatus`, `reasonCode` | 创建状态变更操作单与影响摘要 | `CARD_MANAGE`；始终确认；解冻需要 AAL2 |
+| `card.update_controls` v1.0 | `cardId`, `onlineEnabled?`, `overseasEnabled?`, `singleTxLimit?`, `dailyLimit?` | 创建控制变更操作单，展示 before/after | `CARD_MANAGE`；始终确认；放宽控制需要 AAL2 |
+
+`targetStatus` 只允许 `ACTIVE`、`FROZEN`、`LOST`；关闭卡片不在比赛自助 Tool 范围。至少有一个控制字段变化，限额为 CNY 十进制字符串，单笔不得高于日限额。重复设置同一状态返回原操作结果或 `NO_CHANGE`，不重复写历史。
+
+### 4.5 订阅/代扣
+
+| Tool | 主要输入 | 确定性输出 | 权限/确认 |
+|---|---|---|---|
+| `subscription.list_owned` v1.0 | `status?`, `chargeBefore?`, `limit<=50` | 本人订阅、金额、周期、下次扣款、状态 | `SUBSCRIPTION_VIEW` + 所有权 |
+| `subscription.analyze_costs` v1.0 | `subscriptionIds?`, `horizonMonths(1..12)` | 月/年化成本、临近扣款、可取消项 | Java 计算；仅本人订阅 |
+| `subscription.cancel` v1.0 | `subscriptionId`, `reasonCode?` | 创建取消操作单，展示生效时间和影响 | `SUBSCRIPTION_MANAGE`；始终确认 |
+
+只有 `ACTIVE/PAUSED` 的可取消订阅允许生成取消操作单；已取消返回幂等结果。检测到的周期流水若尚未成为已验证订阅，只能提示用户，不能直接调用取消。
+
+### 4.6 操作与解释（只读）
+
+| Tool | 主要输入 | 确定性输出 | 权限/约束 |
+|---|---|---|---|
+| `operation.get_status` v1.0 | `operationId` | 本人操作状态、确认有效期、业务回执或安全错误 | 操作所有权；不泄露内部堆栈 |
+| `audit.explain_decision` v1.0 | `operationId?`, `traceId?` 二选一 | 参数、权限、风险、确认、执行各阶段的决策凭证 | `AUDIT_VIEW_OWN`；仅本人、脱敏、安全原因码 |
+
+确认和取消不是模型 Tool。前端必须调用专用 REST 接口并提交服务端发出的 challenge；这样交易不会因模型误判一句“好的”或恶意文本中的“确认”而执行。
+
+## 5. 跨场景组合规则
+
+跨场景没有万能 Tool，由 TaskPlan DAG 编排上述原子能力。例如：
+
+```mermaid
+flowchart LR
+    A[bill.analyze_spending] --> B[bill.detect_recurring]
+    B --> C[subscription.list_owned]
+    C --> D[subscription.cancel]
+    A --> E[account.get_summary]
+    E --> F[investment.list_products]
+    F --> G[investment.check_suitability]
+    G --> H[investment.purchase]
+```
+
+- 查询节点可以在依赖满足后自动运行。
+- 写节点只能生成操作单，默认分别确认。
+- 允许批量确认时，必须把全部操作 ID、顺序、before/after、金额与总影响绑定进同一个不可变批次哈希；用户可取消任一项。
+- 某一步失败时停止所有依赖步骤，独立已完成查询无需回滚；未确认写步骤全部保持零副作用。
+- 不使用 LLM 生成补偿交易。若已执行步骤需要撤销，必须调用未来显式定义的反向业务 Tool；当前范围不自动撤销。
+
+## 6. 参数规范化与变量绑定
+
+Gateway 在哈希和幂等前执行规范化：
+
+- UUID 转小写规范格式；币种转大写；金额按币种 scale 规范为 `800.00`。
+- 字符串做 Unicode NFC、首尾空白清理和长度限制；不改变具有业务意义的中间字符。
+- JSON key 按字典序，拒绝未知字段和重复 key。
+- 下游步骤用 `${steps.s1.data.beneficiaryId}` 形式的服务端变量引用。解析器只读取真实 Tool Result，不从自然语言消息读取。
+
+规范化后生成 `argsHash = SHA-256(canonical-json)`。预览、操作单、确认挑战、幂等记录和审计都引用同一 hash。
+
+## 7. Spring AI 集成边界
+
+- 使用 Spring AI 2.x 的显式 `ToolCallback` 暴露 Schema，但回调实现只调用 `SecureToolGateway.invoke(context, toolName, version, args)`；确切依赖版本在 M1 锁定并通过合约测试保护。
+- 不配置共享 `defaultTools`。每次请求按用户权限、会话状态和 profile 构造 ToolCallback 列表，再通过 request-level `.tools(...)` 传入。
+- 关闭自动 Tool Calling Advisor（`spring.ai.chat.client.tool-calling.enabled=false`），由 Agent Orchestrator 驱动可观察的 tool-call loop；模型返回 Function Call 后，先持久化 `tool_invocation` 并完成计划/Schema/来源校验，再调用回调。
+- 关闭缺失 Tool 的 fallback name resolution（`spring.ai.tools.resolution.fallback.enabled=false`），防止模型请求未传入本轮白名单的 bean Tool。
+- Tool Result 作为 `UNTRUSTED_TOOL_DATA` 结构化消息回传模型；数据字段不能被解释为新系统指令。
+- 单次 Agent Run 限制 Tool 次数、计划步骤数、总时长和相同查询重复次数，防止循环和资源消耗攻击。
+- 多轮业务状态由本项目的 Conversation State 管理，不依赖框架自动保存 Tool 中间消息。
+
+上述选择依据 Spring AI 官方的 [Tool Calling](https://docs.spring.io/spring-ai/reference/api/tools.html) 与 [ChatClient](https://docs.spring.io/spring-ai/reference/api/chatclient.html) 机制：request-level tools 会与默认 tools 合并，且默认 Tool Calling Advisor 会自动执行循环，因此本项目显式关闭自动执行并自行控制安全门禁。
+
+## 8. 版本策略
+
+- 兼容性字段新增使用同一 minor schema；删除/重命名/语义变更发布新 Tool major 版本。
+- OperationRequest 永久记录执行时 Tool 版本和 Schema hash。
+- 旧操作单只能由兼容执行器恢复；执行器下线则安全失败并要求重新创建，不偷偷迁移参数。
+- Prompt 版本、Tool 版本、风险策略版本和数据集版本同时进入 Agent Run/审计，确保演示结果可复现。
