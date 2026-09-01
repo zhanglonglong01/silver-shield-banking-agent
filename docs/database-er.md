@@ -154,6 +154,7 @@ erDiagram
 | `risk_finding` | `id`, `decision_id`, `rule_id`, `rule_code`, `effect`, `reason_code`, `facts_redacted_json` | 支撑“为什么” |
 | `idempotency_record` | `id`, `user_id`, `scope`, `idempotency_key_hash`, `request_hash`, `operation_id`, `status`, `response_ref`, `expires_at`, `created_at` | `(user_id, scope, idempotency_key_hash)` 唯一；同 key 异参冲突 |
 | `audit_event` | `id`, `trace_id`, `operation_id`, `sequence_no`, `actor_type`, `actor_id`, `stage`, `action`, `outcome`, `reason_code`, `policy_version`, `resource_type`, `resource_id_masked`, `details_redacted_json`, `request_hash`, `previous_hash`, `event_hash`, `occurred_at` | 追加式；`(trace_id, sequence_no)` 唯一；同 Trace 哈希链 |
+| `tool_security_audit`（M2 已实现） | `id`, `invocation_id`, `request_id`, `snapshot_id`, `user_id`, `tool_name`, `tool_version`, `decision`, `reason_code`, `safe_explanation`, `arguments_hash`, `policy_version`, `duration_ms`, `result_count`, `occurred_at` | 每个 M2 调用一条最终 ALLOW/DENY/ERROR；不保存原始参数、Token 或 Prompt |
 | `outbox_event` | `id`, `operation_id`, `event_type`, `payload_redacted_json`, `status`, `created_at`, `published_at` | 后续 UI 通知/异步扩展；与业务事务同写 |
 
 ## 5. 索引与一致性要求
@@ -178,7 +179,13 @@ V001__identity_and_sandbox_metadata.sql
 V002__banking_sandbox_domain.sql
 ```
 
-后续从 `V003` 起只做追加迁移，规划包含细化权限、ledger/transfer、Agent/Conversation、Safe Execution、Audit/Outbox 和版本化规则，不回写 M1 migration。迁移只负责结构和稳定参考数据。大批量 Mock 交易由版本化 `SandboxDatasetGenerator` + `SandboxDatasetStore` 生成，避免把随机运行逻辑放入迁移；生成器本身有确定性测试，持久化后以 SHA-256 dataset digest 验证。
+M2 已追加：
+
+```text
+V003__tool_security_audit.sql
+```
+
+后续从 `V004` 起只做追加迁移，规划包含细化权限、ledger/transfer、Agent/Conversation、完整 Safe Execution、Audit/Outbox 和版本化规则，不回写既有 migration。迁移只负责结构和稳定参考数据。大批量 Mock 交易由版本化 `SandboxDatasetGenerator` + `SandboxDatasetStore` 生成，避免把随机运行逻辑放入迁移；生成器本身有确定性测试，持久化后以 SHA-256 dataset digest 验证。
 
 ## 7. 可复现 Mock Banking Sandbox
 

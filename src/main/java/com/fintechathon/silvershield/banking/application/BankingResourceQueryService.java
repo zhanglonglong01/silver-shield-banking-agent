@@ -22,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 @Transactional(readOnly = true)
-public class BankingResourceQueryService {
+public class BankingResourceQueryService implements BankingReadUseCase {
 
     private final AccountRepository accountRepository;
     private final AccountTransactionRepository transactionRepository;

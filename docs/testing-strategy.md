@@ -128,6 +128,18 @@ ArchitectureRulesTest
 
 ## 8. 质量门禁
 
+### M2 已落地的安全回归
+
+- prod profile 下 `POST /api/v1/sandbox/reset` 没有 HandlerMapping，返回 404。
+- `login → access → logout → same token` 返回 401。
+- Registry 对名称和版本精确匹配，重复注册启动失败，不做 fallback。
+- Allowed Tool Set 只包含本轮候选与当前角色允许的交集；管理员没有客户读取能力。
+- Gateway 拒绝未暴露 Tool、过期快照、错绑用户/请求、HMAC 篡改和变化后的 descriptor。
+- 严格参数映射拒绝额外 `userId`、`instructions`、未知字段、错误类型、超范围日期和 limit。
+- 不存在/他人 UUID 统一 `RESOURCE_NOT_AVAILABLE`，Handler 之前或 owner-scoped UseCase 内 fail closed。
+- Allow、Deny、Error 均写 `tool_security_audit`；审计不可用时不返回 Tool 数据。
+- ArchUnit 禁止 Agent/Tool 依赖 Repository、Agent 依赖 Handler/Registry，并断言规则扫描到真实 M2 类，防止 vacuous pass。
+
 - Backend：编译、Spotless/Checkstyle（选定其一）、单元/集成/ArchUnit 全通过。
 - Frontend：TypeScript strict、ESLint、Vitest、关键 Playwright 全通过。
 - JaCoCo 建议全局行覆盖 ≥ 80%、分支 ≥ 70%；`execution`、`risk`、`confirmation`、`idempotency` 核心包分支 ≥ 90%。覆盖率不能替代矩阵用例。

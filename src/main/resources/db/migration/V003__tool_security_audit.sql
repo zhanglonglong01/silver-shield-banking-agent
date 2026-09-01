@@ -1,0 +1,21 @@
+CREATE TABLE tool_security_audit (
+    id CHAR(36) NOT NULL,
+    invocation_id CHAR(36) NOT NULL,
+    request_id CHAR(36) NOT NULL,
+    snapshot_id CHAR(36) NULL,
+    user_id CHAR(36) NOT NULL,
+    tool_name VARCHAR(128) NOT NULL,
+    tool_version VARCHAR(32) NOT NULL,
+    decision VARCHAR(16) NOT NULL,
+    reason_code VARCHAR(64) NOT NULL,
+    safe_explanation VARCHAR(255) NOT NULL,
+    arguments_hash CHAR(64) NOT NULL,
+    policy_version VARCHAR(64) NOT NULL,
+    duration_ms BIGINT NOT NULL,
+    result_count INT NOT NULL,
+    occurred_at TIMESTAMP(6) NOT NULL,
+    PRIMARY KEY (id),
+    UNIQUE KEY uk_tool_audit_invocation (invocation_id),
+    KEY idx_tool_audit_user_time (user_id, occurred_at),
+    KEY idx_tool_audit_request (request_id)
+);

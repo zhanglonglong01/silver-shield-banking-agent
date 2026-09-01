@@ -59,6 +59,10 @@ management:
 silvershield:
   security:
     session-ttl: PT2H
+  tool-security:
+    policy-version: m2-read-only-v1
+    snapshot-ttl: PT60S
+    max-arguments-bytes: 8192
   sandbox:
     enabled: false
     dataset-version: fintechathon-demo-v1

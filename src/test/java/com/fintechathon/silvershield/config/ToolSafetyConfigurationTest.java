@@ -19,10 +19,13 @@ class ToolSafetyConfigurationTest {
         assertThat(properties).isNotNull();
         assertThat(properties.getProperty("spring.ai.tools.resolution.fallback.enabled")).isEqualTo("false");
         assertThat(properties.getProperty("spring.ai.chat.client.tool-calling.enabled")).isEqualTo("false");
+        assertThat(properties.getProperty("silvershield.tool-security.policy-version"))
+                .isEqualTo("m2-read-only-v1");
+        assertThat(properties.getProperty("silvershield.tool-security.snapshot-ttl")).isEqualTo("PT60S");
     }
 
     @Test
-    void m1MustNotContainSpringAiRuntime() {
+    void m2MustStillNotContainSpringAiRuntime() {
         assertThat(ClassUtils.isPresent("org.springframework.ai.chat.client.ChatClient", getClass().getClassLoader()))
                 .isFalse();
     }

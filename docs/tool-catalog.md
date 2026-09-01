@@ -13,6 +13,20 @@
 
 ## 2. 统一返回信封
 
+### M2 已实现的只读 Tool
+
+| Tool | 参数 | Capability | 结果 |
+|---|---|---|---|
+| `get_accounts@1.0` | `{}` | `ACCOUNT_READ` | 本人脱敏账户列表 |
+| `get_account_balance@1.0` | `accountId` | `ACCOUNT_READ` | 本人单账户账面/可用余额 |
+| `list_transactions@1.0` | `accountId`, `from`, `to`, `limit?` | `TRANSACTION_READ` | 最多 100 条、最长 366 天本人流水 |
+| `list_cards@1.0` | `{}` | `CARD_READ` | 本人脱敏卡片 |
+| `list_payees@1.0` | `{}` | `PAYEE_READ` | 本人脱敏收款人 |
+| `list_subscriptions@1.0` | `{}` | `SUBSCRIPTION_READ` | 本人订阅/代扣 |
+| `list_wealth_products@1.0` | `riskLevelMax?`, `currency?`, `saleStatus?`, `limit?` | `WEALTH_PRODUCT_READ` | 最多 20 个模拟产品 |
+
+这些 Handler 没有 Repository 依赖；身份只取自 `ToolExecutionContext`。M2 REST 返回 `ToolGatewayResult`，完整 Agent/evidence 信封留到后续模型接入阶段。
+
 ```json
 {
   "tool": "transfer.create",

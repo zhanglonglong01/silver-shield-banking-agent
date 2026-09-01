@@ -42,20 +42,33 @@ flowchart LR
 
 ### Capability / Tool Policy 双重门禁
 
-未来每一轮 Agent 请求都生成不可变 `AllowedToolSetSnapshot`：
+M2 已实现每个请求动态生成不可变 `AllowedToolSetSnapshot`；未来 Agent Loop 直接复用该机制：
 
 ```text
-CapabilityPolicy.evaluate(
-  principal, assuranceLevel, conversationState, channel,
-  pendingOperations, featureFlags, sandboxMode, policyVersion
-) -> allowedToolNames + decisionId + snapshotHash + expiresAt
+CapabilityPolicy.issue(
+  serverPrincipal + assuranceLevel + requestId + channel,
+  requestedCandidateToolIds
+) -> signed allowed definitions + denied candidates + policyVersion + expiresAt
 ```
 
 1. Agent 只把快照中的 ToolCallback 通过 request-level `.tools(...)` 暴露给模型。
 2. 不为高风险或写操作注册 `defaultTools`；本项目默认不注册任何共享业务 `defaultTools`。
 3. 模型返回 Tool Call 后，Secure Tool Gateway 根据服务端上下文重新取得/复核策略快照，并验证精确的 `(toolName, version)` 是否仍在 Allowed Tool Set。
 4. Tool 未暴露、策略快照过期、上下文变化或执行端集合不包含该 Tool 时，一律 `TOOL_NOT_ALLOWED`；绝不依赖模型侧 JSON Schema 作为最终安全边界。
-5. Policy decision ID、snapshot hash 和最终成员检查结果进入 `tool_invocation` 与审计。
+5. M2 快照使用进程内 HMAC-SHA256 保护完整性，并绑定 `requestId + userId + role + AAL + policyVersion + expiresAt + descriptorDigest`；最终成员检查结果写入 `tool_security_audit`。
+
+M2 实际执行链为：
+
+```text
+Principal → CapabilityPolicy → AllowedToolSetSnapshot
+          → SecureToolGateway
+          → snapshot/context/member verification
+          → ExplicitToolRegistry exact (name, version)
+          → descriptor digest and READ_ONLY check
+          → strict Jackson + Bean Validation + semantic validation
+          → Tool Handler → BankingReadUseCase
+          → allow/deny/error audit (arguments hash only)
+```
 
 框架级 Tool resolution fallback 永久关闭，ChatClient 自动 Tool Calling 永久关闭；未来由应用维护用户控制、逐步可观察的 Tool Calling Loop。
 

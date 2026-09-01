@@ -4,9 +4,9 @@
 
 本项目面向 2026 FinTechathon 深圳国际金融科技大赛国内赛道。目标是在完全模拟的银行沙箱中，让用户通过自然语言完成银行任务，同时对每一次允许、待确认和拒绝给出可验证、可审计的依据。
 
-当前状态：**M1——Banking Sandbox 与工程基础已实现**。尚未进入 M2，不包含 LLM、Agent Planner、Tool Calling、RAG 或完整业务写操作。
+当前状态：**M2——Secure Read-only Tool Foundation 已实现**。当前仍不包含 Spring AI、LLM、Agent Planner、RAG 或任何业务写操作。
 
-## M1 快速启动
+## M1/M2 快速启动
 
 前置条件：Docker Compose。所有账号、账户、卡片、流水、收款人和产品均为虚构数据。
 
@@ -53,6 +53,8 @@ Content-Type: application/json
 | `GET` | `/api/v1/wealth-products` | 模拟理财产品 |
 | `GET` | `/api/v1/sandbox/metadata` | dev/test 数据集版本、seed、摘要和行数 |
 | `POST` | `/api/v1/sandbox/reset` | 仅 dev/test + DEMO_ADMIN；确定性重置 |
+| `POST` | `/api/v1/tools/allowed` | 按当前 Principal、AAL 和候选集合生成短期 Allowed Tool Set |
+| `POST` | `/api/v1/tools/execute` | 通过 SecureToolGateway 执行一个只读 Tool |
 
 `prod` profile 不装配 Sandbox initializer、reset service 或 reset controller。
 
@@ -126,14 +128,14 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ## 开发 Roadmap
 
-### M0：设计冻结（当前阶段）
+### M0：设计冻结
 
 - [x] 系统架构与信任边界
 - [x] ER 模型与 Mock 数据方案
 - [x] Tool 名称、参数、返回信封与版本策略
 - [x] 安全执行管线、风险规则、确认和审计模型
 - [x] 目录结构、测试金字塔和开发里程碑
-- [ ] 用户确认设计决策与首个实现模块
+- [x] 用户确认设计决策与首个实现模块
 
 退出条件：核心写链路、数据所有权、确认绑定、拒绝解释和测试要求没有歧义。
 
@@ -148,14 +150,17 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 退出条件：`docker compose up` 可启动；演示用户可登录；迁移与 Mock 数据校验测试通过。
 
-### M2：安全执行内核
+### M2：Secure Tool Foundation
 
-- 实现 Tool Registry/Allowlist、JSON Schema/Bean Validation、权限决策、风险规则引擎。
-- 实现 `OperationRequest`、确认挑战、参数哈希、AAL2 模拟验证、幂等和审计决策凭证。
-- 建立 Prompt Injection 输入隔离、计划校验、输出证据约束和安全错误码。
-- 加入 ArchUnit 规则，阻止 Agent/Tool 绕过执行网关访问 Service/Repository。
+- [x] 实现 Capability Policy、HMAC 完整性保护的 `AllowedToolSetSnapshot` 和 60 秒有效期。
+- [x] 实现 7 项显式注册的只读 Tool；Registry 不做名称/版本 fallback。
+- [x] 实现 `SecureToolGateway`：执行端成员复核 → Registry → 定义摘要 → 严格参数校验 → Handler → 审计。
+- [x] Tool Handler 只依赖 `BankingReadUseCase`，不依赖 Repository；Agent 禁止依赖 Handler/Registry。
+- [x] 增加 allow/deny、越权、额外安全字段、Prompt Injection、幻觉 ID、快照过期/篡改/错绑与审计失败测试。
+- [x] 增加 `tool_security_audit` 追加记录；只保存参数 SHA-256，不保存 Bearer、Prompt 或原始参数。
+- [x] 保持 Spring AI、LLM、Planner、RAG、写操作、AAL2 流程全部未接入。
 
-退出条件：最小测试 Tool 能完整演示 ALLOW、AWAITING_CONFIRMATION、DENY、EXPIRED、REPLAY 五条路径。
+退出条件：动态允许集合和 7 个只读 Tool 可部署演示；任何 Tool 执行只能通过 Gateway；完整测试通过。
 
 ### M3：账户与账单分析
 
@@ -225,4 +230,10 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 6. 不为写操作配置 `defaultTools`；未来每轮 Agent 请求动态暴露 Allowed Tool Set，执行端再次校验集合成员资格。
 7. 永久关闭 Tool resolution fallback 与 ChatClient 自动 Tool Calling；未来由用户控制的循环逐次验证并执行 Tool Call。
 
-设计确认后，建议按 **M1 工程骨架 → M2 安全执行内核 → M3 账单查询** 的顺序实现，而不是先接入真实 LLM。
+## Known risks
+
+- 当前 Spring Boot 管理的 Flyway 版本在日志中声明已测试的 MySQL 上限为 8.1，而 Compose/Testcontainers 使用 MySQL 8.4。当前 3 个 migration、Compose 启动和完整测试均通过；按约束暂不改版本，提交前继续评估升级 Flyway 或固定 MySQL。
+- M2 的 Allowed Tool Set 使用进程内随机 HMAC 密钥；应用重启会使尚未过期的旧快照失效。这是安全的 fail-closed 行为，未来多实例部署需改为受管共享密钥或服务端快照存储。
+- M2 暴露的是稳定参数名和严格 Java 参数契约，尚未生成面向模型的完整 JSON Schema；Spring AI 适配与 request-level ToolCallback 暴露留到后续阶段。
+
+下一阶段建议进入 **M3 账户与账单分析**，继续沿用 M2 Gateway 与审计边界；在业务读模型和证据约束稳定前不接入真实 LLM。

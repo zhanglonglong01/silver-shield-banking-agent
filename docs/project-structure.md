@@ -1,6 +1,6 @@
 # 项目目录与模块边界
 
-## 1. M1 实际目录
+## 1. M1/M2 实际目录
 
 ```text
 AI_Banking_Agent/
@@ -9,7 +9,7 @@ AI_Banking_Agent/
 ├─ src/main/java/com/fintechathon/silvershield/
 │  ├─ SilverShieldApplication.java
 │  ├─ common/api/                 # 安全错误信封
-│  ├─ config/                     # Sandbox、Security、Clock 配置
+│  ├─ config/                     # Sandbox、Security、Clock、显式 Tool 装配
 │  ├─ security/                   # Redis bearer 会话、AAL1/AAL2、Spring Security
 │  ├─ identity/
 │  │  ├─ domain/                  # AppUser
@@ -20,18 +20,26 @@ AI_Banking_Agent/
 │  │  ├─ domain/                  # Account/Card/Transaction/Payee/Subscription/WealthProduct
 │  │  └─ repository/
 │  ├─ sandbox/                    # 固定生成、持久化、digest、reset
-│  ├─ agent/boundary/             # 仅边界占位
-│  └─ tool/boundary/              # 仅边界占位
+│  ├─ agent/boundary/             # 仅边界占位；禁止依赖 Tool Handler/Registry
+│  ├─ tool/
+│  │  ├─ api/                     # M2 capability/execute REST 演示入口
+│  │  ├─ capability/              # Policy、HMAC AllowedToolSetSnapshot
+│  │  ├─ gateway/                 # 唯一执行入口、严格参数校验
+│  │  ├─ registry/                # 精确 name+version 显式白名单
+│  │  ├─ handler/                 # 7 个只读 Tool → BankingReadUseCase
+│  │  ├─ audit/                   # 审计输出 Port
+│  │  └─ model/                   # 无 Spring AI 依赖的 Tool 契约
+│  └─ audit/infrastructure/       # JPA 追加式 Tool Security Audit
 ├─ src/main/resources/
 │  ├─ application*.yml
-│  └─ db/migration/V001..V002
+│  └─ db/migration/V001..V003
 ├─ src/test/java/...              # unit、ArchUnit、Testcontainers
 ├─ scripts/reset-sandbox.ps1
 ├─ docs/
 └─ README.md
 ```
 
-M1 已建立 Maven 单模块后端、Docker Compose、基础领域、认证、Sandbox 和测试。`agent.boundary`、`tool.boundary` 当前仅有无业务占位类型与 ArchUnit 规则；尚未实现 Spring AI、Agent Planner、Tool Callback、RAG 或 Capability Policy 运行时逻辑。
+M1 已建立 Maven 单模块后端、Docker Compose、基础领域、认证、Sandbox 和测试。M2 在同一模块内加入 Capability、Registry、Gateway、只读 Handler 与持久化安全审计；`agent.boundary` 仍为空业务边界，尚未实现 Spring AI、Agent Planner、Tool Callback 或 RAG。
 
 ## 2. 后续目标目录（M2+）
 
@@ -195,6 +203,13 @@ GET    /api/v1/sandbox/metadata     # 仅 dev/test
 POST   /api/v1/sandbox/reset        # 仅 dev/test + DEMO_ADMIN
 ```
 
+M2 已实现：
+
+```text
+POST   /api/v1/tools/allowed        # 动态策略快照；不返回 HMAC
+POST   /api/v1/tools/execute        # 当前仅只读；内部统一通过 SecureToolGateway
+```
+
 后续目标：
 
 ```text
@@ -212,7 +227,7 @@ GET    /api/v1/audit/traces/{traceId}/explanation
 GET    /api/v1/audit/operations/{operationId}
 ```
 
-M1 页面型 GET 接口全部从服务端 Principal 取得 user ID，并在 Repository 查询中绑定 owner scope。后续只读 Tool 会复用相同 Query UseCase 和所有权策略。当前范围不暴露业务写 REST 接口。
+M1 页面型 GET 与 M2 Tool 均从服务端 Principal 取得 user ID；Tool 参数无法提交 `userId`、role 或 AAL。只读 Handler 复用 `BankingReadUseCase` 的 owner scope。当前范围不暴露业务写 REST 接口。
 
 ## 5. 配置与 Profile
 
