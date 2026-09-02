@@ -4,6 +4,13 @@ target/
 *.iml
 *.log
 .env
+.env.*
+!.env.example
+application-local.yml
+application-secrets.yml
+secrets/
+*.pem
+*.key
 data/
 .runtime/
 !.mvn/wrapper/maven-wrapper.properties

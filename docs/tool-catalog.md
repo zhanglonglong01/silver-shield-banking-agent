@@ -25,7 +25,7 @@
 | `list_subscriptions@1.0` | `{}` | `SUBSCRIPTION_READ` | 本人订阅/代扣 |
 | `list_wealth_products@1.0` | `riskLevelMax?`, `currency?`, `saleStatus?`, `limit?` | `WEALTH_PRODUCT_READ` | 最多 20 个模拟产品 |
 
-这些 Handler 没有 Repository 依赖；身份只取自 `ToolExecutionContext`。M2 REST 返回 `ToolGatewayResult`，完整 Agent/evidence 信封留到后续模型接入阶段。
+这些 Handler 没有 Repository 依赖；身份只取自 `ToolExecutionContext`。M3 的 `SpringAiToolSchemaCatalog` 从同一 Handler 参数类型和 `ToolDefinition` 生成 JSON Schema，并只处理当前 snapshot 成员。
 
 ```json
 {
@@ -189,15 +189,16 @@ Gateway 在哈希和幂等前执行规范化：
 
 ## 7. Spring AI 集成边界
 
-- 使用 Spring AI 2.x 的显式 `ToolCallback` 暴露 Schema，但回调实现只调用 `SecureToolGateway.invoke(context, toolName, version, args)`；确切依赖版本在 M1 锁定并通过合约测试保护。
-- 不配置共享 `defaultTools`。每次请求按用户权限、会话状态和 profile 构造 ToolCallback 列表，再通过 request-level `.tools(...)` 传入。
-- 关闭自动 Tool Calling Advisor（`spring.ai.chat.client.tool-calling.enabled=false`），由 Agent Orchestrator 驱动可观察的 tool-call loop；模型返回 Function Call 后，先持久化 `tool_invocation` 并完成计划/Schema/来源校验，再调用回调。
+- 当前 Spring Boot 3.5 基线使用 Spring AI 1.1.8；2.x 面向 Spring Boot 4，因此未升级到 2.x。
+- `BankingModelClient` 是厂商无关端口；`SpringAiBankingModelClient` 直接调用低层 `ChatModel`，不使用 ChatClient 自动循环。
+- 不配置共享 `defaultTools`。每次请求只把 `AllowedToolSetSnapshot` 中的定义转换为 definition-only `ToolCallback`；callback 被调用会抛错，不包含数据库或 Gateway 执行逻辑。
+- 同时保持 `spring.ai.chat.client.tool-calling.enabled=false`，并在每次请求设置 `internalToolExecutionEnabled=false`。模型 Tool Call 由应用解析后显式交给 `SecureToolGateway`。
 - 关闭缺失 Tool 的 fallback name resolution（`spring.ai.tools.resolution.fallback.enabled=false`），防止模型请求未传入本轮白名单的 bean Tool。
-- Tool Result 作为 `UNTRUSTED_TOOL_DATA` 结构化消息回传模型；数据字段不能被解释为新系统指令。
-- 单次 Agent Run 限制 Tool 次数、计划步骤数、总时长和相同查询重复次数，防止循环和资源消耗攻击。
-- 多轮业务状态由本项目的 Conversation State 管理，不依赖框架自动保存 Tool 中间消息。
+- Tool Result 由应用构造 `ToolResponseMessage` 回传；系统提示明确数据字段不能成为新指令。
+- 单次 Agent Run 最多 5 轮、每轮 4 次、总计 12 次 Tool Call，并限制模型/Tool 超时、上下文长度和相同调用重复。
+- Provider 配置只读取 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL` 环境变量；默认 `spring.ai.model.chat=none`。
 
-上述选择依据 Spring AI 官方的 [Tool Calling](https://docs.spring.io/spring-ai/reference/api/tools.html) 与 [ChatClient](https://docs.spring.io/spring-ai/reference/api/chatclient.html) 机制：request-level tools 会与默认 tools 合并，且默认 Tool Calling Advisor 会自动执行循环，因此本项目显式关闭自动执行并自行控制安全门禁。
+上述选择依据 Spring AI 官方 Tool Calling/ChatModel 机制，并由适配器测试锁定“只发送定义、不自动执行”的行为。
 
 ## 8. 版本策略
 

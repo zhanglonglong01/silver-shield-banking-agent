@@ -32,12 +32,28 @@ spring:
       repositories:
         enabled: false
   ai:
+    model:
+      chat: ${SPRING_AI_CHAT_MODEL:none}
+      audio:
+        speech: none
+        transcription: none
+      embedding: none
+      image: none
+      moderation: none
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-4o-mini}
+          temperature: 0.1
     tools:
       resolution:
         fallback:
           enabled: false
     chat:
       client:
+        enabled: false
         tool-calling:
           enabled: false
 
@@ -63,6 +79,17 @@ silvershield:
     policy-version: m2-read-only-v1
     snapshot-ttl: PT60S
     max-arguments-bytes: 8192
+  agent:
+    max-tool-rounds: 5
+    max-tool-calls-per-round: 4
+    max-total-tool-calls: 12
+    model-timeout: PT20S
+    tool-timeout: PT5S
+    max-user-message-chars: 4000
+    max-context-chars: 65536
+    max-answer-chars: 8000
+    conversation-ttl: PT30M
+    max-conversation-messages: 12
   sandbox:
     enabled: false
     dataset-version: fintechathon-demo-v1

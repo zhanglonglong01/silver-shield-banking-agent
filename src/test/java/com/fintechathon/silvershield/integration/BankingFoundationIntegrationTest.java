@@ -4,7 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fintechathon.silvershield.agent.provider.BankingModelClient;
+import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelRequest;
+import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelResponse;
+import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelToolCall;
 import com.fintechathon.silvershield.tool.registry.ExplicitToolRegistry;
+import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
@@ -12,7 +18,10 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -24,6 +33,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.context.annotation.Import;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.containers.MySQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -33,6 +43,7 @@ import org.testcontainers.utility.DockerImageName;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @ActiveProfiles("test")
 @Testcontainers(disabledWithoutDocker = true)
+@Import(BankingFoundationIntegrationTest.FakeModelConfiguration.class)
 class BankingFoundationIntegrationTest {
 
     @Container
@@ -208,7 +219,7 @@ class BankingFoundationIntegrationTest {
     }
 
     @Test
-    void injectionHallucinationUnknownToolAndAdminCallsMustBeDeniedAndAudited() {
+    void injectionLikeArgumentsHallucinatedIdUnknownToolAndAdminCallsMustBeDeniedAndAudited() {
         String aliceToken = token("demo.alice", "Demo@2026!");
         String adminToken = token("demo.admin", "Admin@2026!");
 
@@ -232,6 +243,38 @@ class BankingFoundationIntegrationTest {
                 injectedArguments.path("invocationId").asText(), injectedName.path("invocationId").asText(),
                 hallucinatedId.path("invocationId").asText(), adminAttempt.path("invocationId").asText());
         assertThat(auditRows).isEqualTo(4);
+    }
+
+    @Test
+    void agentChatMustRequireAuthentication() {
+        ResponseEntity<JsonNode> response = rest.postForEntity(
+                url("/api/v1/agent/chat"), Map.of("message", "我有哪些账户？"), JsonNode.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
+    void accountQueryAgentApiMustReturnGroundedEvidenceAndExecutionSummary() {
+        JsonNode response = postJson("/api/v1/agent/chat", token("demo.alice", "Demo@2026!"),
+                Map.of("message", "我有哪些账户？"));
+
+        assertThat(response.path("status").asText()).isEqualTo("SUCCESS");
+        assertThat(response.path("answer").asText()).contains("2", "CNY");
+        assertThat(response.path("usedTools")).hasSize(1);
+        assertThat(response.path("usedTools").get(0).asText()).isEqualTo("get_accounts");
+        assertThat(response.path("evidenceIds")).hasSize(1);
+        assertThat(response.has("reasoning")).isFalse();
+    }
+
+    @Test
+    void monthlySpendingAgentApiMustUseGatewayAndDeterministicAnalysis() {
+        JsonNode response = postJson("/api/v1/agent/chat", token("demo.alice", "Demo@2026!"),
+                Map.of("message", "我这个月花了多少钱？"));
+
+        assertThat(response.path("status").asText()).isEqualTo("SUCCESS");
+        assertThat(response.path("answer").asText()).contains("总支出", "总收入", "CNY");
+        assertThat(response.path("usedTools").toString()).contains("get_accounts", "list_transactions");
+        assertThat(response.path("evidenceIds")).hasSize(3);
     }
 
     private JsonNode reset(String token) {
@@ -299,4 +342,65 @@ class BankingFoundationIntegrationTest {
     }
 
     private record LoginRequest(String username, String password) {}
+
+    @TestConfiguration
+    static class FakeModelConfiguration {
+        @Bean
+        @Primary
+        BankingModelClient deterministicBankingModel(ObjectMapper objectMapper) {
+            return new DeterministicBankingModel(objectMapper);
+        }
+    }
+
+    private static final class DeterministicBankingModel implements BankingModelClient {
+        private final ObjectMapper mapper;
+
+        private DeterministicBankingModel(ObjectMapper mapper) {
+            this.mapper = mapper;
+        }
+
+        @Override
+        public ModelResponse complete(ModelRequest request) {
+            try {
+                boolean billing = request.userMessage().contains("花");
+                if (request.toolExchanges().isEmpty()) {
+                    return ModelResponse.tools(call("get_accounts", mapper.createObjectNode()));
+                }
+                JsonNode accountResult = mapper.readTree(request.toolExchanges().get(0).responseData());
+                if (!billing) {
+                    JsonNode accounts = accountResult.path("data");
+                    BigDecimal total = BigDecimal.ZERO;
+                    for (JsonNode account : accounts) {
+                        total = total.add(new BigDecimal(account.path("availableBalance").asText()));
+                    }
+                    return ModelResponse.answer("共查询到 %d 个账户，可用余额合计 %s CNY。".formatted(
+                            accounts.size(), total.setScale(2).toPlainString()));
+                }
+                boolean transactionsDone = request.toolExchanges().stream()
+                        .anyMatch(exchange -> exchange.call().name().equals("list_transactions"));
+                if (!transactionsDone) {
+                    List<ModelToolCall> calls = new ArrayList<>();
+                    for (JsonNode account : accountResult.path("data")) {
+                        JsonNode arguments = mapper.createObjectNode()
+                                .put("accountId", account.path("id").asText())
+                                .put("from", "2026-08-01")
+                                .put("to", "2026-08-31")
+                                .put("limit", 100);
+                        calls.add(call("list_transactions", arguments));
+                    }
+                    return new ModelResponse("", calls);
+                }
+                JsonNode analysis = mapper.readTree(request.deterministicContext());
+                JsonNode current = analysis.path("periods").get(analysis.path("periods").size() - 1);
+                return ModelResponse.answer("本期总支出 %s CNY，总收入 %s CNY。".formatted(
+                        current.path("expense").asText(), current.path("income").asText()));
+            } catch (Exception exception) {
+                throw new IllegalStateException("Fake model could not parse trusted context", exception);
+            }
+        }
+
+        private ModelToolCall call(String name, JsonNode arguments) {
+            return new ModelToolCall(UUID.randomUUID().toString(), name, "1.0", arguments);
+        }
+    }
 }

@@ -130,6 +130,8 @@ ArchitectureRulesTest
 
 ### M2 已落地的安全回归
 
+M2 尚未接入 LLM。下列额外字段和恶意参数测试统一称为 **injection-like malicious input / Tool argument boundary test**，不称为真正的 Prompt Injection 测试：
+
 - prod profile 下 `POST /api/v1/sandbox/reset` 没有 HandlerMapping，返回 404。
 - `login → access → logout → same token` 返回 401。
 - Registry 对名称和版本精确匹配，重复注册启动失败，不做 fallback。
@@ -139,6 +141,18 @@ ArchitectureRulesTest
 - 不存在/他人 UUID 统一 `RESOURCE_NOT_AVAILABLE`，Handler 之前或 owner-scoped UseCase 内 fail closed。
 - Allow、Deny、Error 均写 `tool_security_audit`；审计不可用时不返回 Tool 数据。
 - ArchUnit 禁止 Agent/Tool 依赖 Repository、Agent 依赖 Handler/Registry，并断言规则扫描到真实 M2 类，防止 vacuous pass。
+
+### M3 已落地的 Agent 与真实 Prompt Injection 回归
+
+- 使用 Adversarial Fake Model 驱动完整 Agent Loop；Fake 产生的 Tool Call 必须经过真实 Capability Policy、Snapshot 和 Gateway。
+- 覆盖账户、余额、月度支出、前后周期比较、分类、大额交易、高频商户和订阅分析。
+- 覆盖同一统计周期的多账户流水合并，避免只统计最后一次 Tool Result 或错误比较同周期账户。
+- 覆盖“忽略规则调用 transfer”“成为管理员展示 Bob”“不用 Tool 直接报余额”和隐藏 Tool 授权伪造。
+- 覆盖 `transfer_money`、`delete_account`、`get_accounts@999.0` 和随机 Tool 名幻觉。
+- 覆盖 Bob accountId、未知安全参数、虚假成功、Tool Result 与最终数字不一致。
+- 覆盖模型格式异常、重复调用、单轮/总量/最大 5 轮、上下文超限、Provider 超时/不可用和 Tool 超时。
+- Spring AI 适配测试断言 `internalToolExecutionEnabled=false`，定义型 callback 被调用时立即拒绝。
+- 真实 LLM 测试使用 `real-llm` Maven profile 和 `OPENAI_API_KEY` 环境变量；默认 CI 排除，不产生付费调用。
 
 - Backend：编译、Spotless/Checkstyle（选定其一）、单元/集成/ArchUnit 全通过。
 - Frontend：TypeScript strict、ESLint、Vitest、关键 Playwright 全通过。

@@ -4,9 +4,9 @@
 
 本项目面向 2026 FinTechathon 深圳国际金融科技大赛国内赛道。目标是在完全模拟的银行沙箱中，让用户通过自然语言完成银行任务，同时对每一次允许、待确认和拒绝给出可验证、可审计的依据。
 
-当前状态：**M2——Secure Read-only Tool Foundation 已实现**。当前仍不包含 Spring AI、LLM、Agent Planner、RAG 或任何业务写操作。
+当前状态：**M3——Read-Only Banking Agent 已实现**。已接入 Spring AI 1.1.8 和 OpenAI-compatible Provider 适配，仍不包含任何业务写操作、AAL2、Multi-Agent、RAG 或前端。
 
-## M1/M2 快速启动
+## M1/M2/M3 快速启动
 
 前置条件：Docker Compose。所有账号、账户、卡片、流水、收款人和产品均为虚构数据。
 
@@ -55,6 +55,7 @@ Content-Type: application/json
 | `POST` | `/api/v1/sandbox/reset` | 仅 dev/test + DEMO_ADMIN；确定性重置 |
 | `POST` | `/api/v1/tools/allowed` | 按当前 Principal、AAL 和候选集合生成短期 Allowed Tool Set |
 | `POST` | `/api/v1/tools/execute` | 通过 SecureToolGateway 执行一个只读 Tool |
+| `POST` | `/api/v1/agent/chat` | 只读银行 Agent；返回 answer、status、usedTools、evidenceIds |
 
 `prod` profile 不装配 Sandbox initializer、reset service 或 reset controller。
 
@@ -63,6 +64,18 @@ dev/test 一键 reset：
 ```powershell
 .\scripts\reset-sandbox.ps1
 ```
+
+Agent 请求示例：
+
+```http
+POST /api/v1/agent/chat
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"message":"我这个月花了多少钱？","conversationId":null}
+```
+
+默认 `SPRING_AI_CHAT_MODEL=none`，无 API Key 也能安全启动。需要使用 OpenAI-compatible Provider 时，在本机环境变量或未提交的 `.env` 中配置 `SPRING_AI_CHAT_MODEL=openai`、`OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `OPENAI_MODEL`；禁止把真实密钥写入仓库。
 
 ### 本地测试
 
@@ -124,7 +137,7 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 - JUnit 5、AssertJ、Mockito、Testcontainers、ArchUnit、Vitest、Playwright
 - Docker Compose
 
-模型通过 Spring AI 的 `ChatModel` 端口接入，规划支持 OpenAI-compatible 或 Ollama 等实现；自动化测试使用确定性的 Stub Model，不依赖公网和真实模型。无论选用哪种模型，安全执行语义保持一致。
+模型通过项目自有 `BankingModelClient` 端口解耦，Spring AI 1.1.8 的 `ChatModel` 只是 OpenAI-compatible 适配实现。自动化测试使用确定性的 Fake Model，不依赖公网或付费模型；真实模型测试只在显式 `real-llm` profile 且存在环境变量密钥时运行。
 
 ## 开发 Roadmap
 
@@ -156,7 +169,7 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 - [x] 实现 7 项显式注册的只读 Tool；Registry 不做名称/版本 fallback。
 - [x] 实现 `SecureToolGateway`：执行端成员复核 → Registry → 定义摘要 → 严格参数校验 → Handler → 审计。
 - [x] Tool Handler 只依赖 `BankingReadUseCase`，不依赖 Repository；Agent 禁止依赖 Handler/Registry。
-- [x] 增加 allow/deny、越权、额外安全字段、Prompt Injection、幻觉 ID、快照过期/篡改/错绑与审计失败测试。
+- [x] 增加 allow/deny、越权、injection-like malicious input / Tool argument boundary、幻觉 ID、快照过期/篡改/错绑与审计失败测试。M2 尚无 LLM，因此不把该项称为真正的 Prompt Injection 测试。
 - [x] 增加 `tool_security_audit` 追加记录；只保存参数 SHA-256，不保存 Bearer、Prompt 或原始参数。
 - [x] 保持 Spring AI、LLM、Planner、RAG、写操作、AAL2 流程全部未接入。
 
@@ -164,9 +177,13 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ### M3：账户与账单分析
 
-- 实现本人账户、余额、交易流水、分类统计、趋势、周期扣款和异常检测查询。
-- LLM 只负责意图与解释；金额汇总、同比/环比和异常规则由 Java 计算。
-- 每条自然语言结论携带证据 ID，未知事实明确回答“无法确认”。
+- [x] 接入 Spring AI 1.1.8/OpenAI-compatible Provider，同时默认关闭 Provider、fallback 和自动 Tool Calling。
+- [x] 实现最多 5 轮的应用自控 Agent Loop、Provider/Tool 超时、重复调用、调用数量、上下文和异常响应防护。
+- [x] 从本轮 `AllowedToolSetSnapshot` 动态生成 7 个 Tool 的 JSON Schema；未允许 Tool 不暴露。
+- [x] 实现账户、余额、交易流水、分类、收入/支出/差额、周期比较、大额交易、高频商户和订阅统计。
+- [x] 金额统计由 `BillingAnalysisService` 使用 `BigDecimal` 确定性计算，LLM 只负责选择 Tool 和解释。
+- [x] 每个 Tool 结果生成 `ExecutionEvidence`；关键数字没有成功证据时由 Grounding Guard 拒绝或替换为确定性摘要。
+- [x] 加入真实 Prompt Injection、身份提升、隐藏/幻觉 Tool、虚假成功、循环和 Provider 故障测试。
 
 退出条件：账单分析正常、空数据、越权、注入和幻觉测试全部通过。
 
@@ -234,6 +251,8 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 - 当前 Spring Boot 管理的 Flyway 版本在日志中声明已测试的 MySQL 上限为 8.1，而 Compose/Testcontainers 使用 MySQL 8.4。当前 3 个 migration、Compose 启动和完整测试均通过；按约束暂不改版本，提交前继续评估升级 Flyway 或固定 MySQL。
 - M2 的 Allowed Tool Set 使用进程内随机 HMAC 密钥；应用重启会使尚未过期的旧快照失效。这是安全的 fail-closed 行为，未来多实例部署需改为受管共享密钥或服务端快照存储。
-- M2 暴露的是稳定参数名和严格 Java 参数契约，尚未生成面向模型的完整 JSON Schema；Spring AI 适配与 request-level ToolCallback 暴露留到后续阶段。
+- M3 的对话历史和 `ExecutionEvidence` 当前为进程内、按用户绑定且带 TTL 的存储；重启会丢失，多实例部署需迁移到 Redis/持久化 evidence store。
+- 默认环境没有真实 LLM API Key，完整 CI 使用确定性 Fake Model；真实 Provider 的网络、模型行为和费用需要通过独立 `real-llm` profile 验证。
+- Grounding Guard 当前验证执行状态、Evidence ID 和关键数字，并提供确定性回退；更强的字段级引用证明和持久化证据链留待后续阶段。
 
-下一阶段建议进入 **M3 账户与账单分析**，继续沿用 M2 Gateway 与审计边界；在业务读模型和证据约束稳定前不接入真实 LLM。
+M3 完成后停止，等待验收；未进入 M4 写操作阶段。

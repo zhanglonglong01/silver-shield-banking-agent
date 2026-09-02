@@ -185,6 +185,8 @@ M2 已追加：
 V003__tool_security_audit.sql
 ```
 
+M3 没有修改银行业务 schema。`ExecutionEvidence` 与短期 Conversation 当前为用户绑定、TTL 受限的进程内 Port 实现；这是只读阶段的接口预留，不把原始 Prompt 或完整 Tool 参数写入数据库。后续若持久化，将从 `V004` 追加迁移并进行字段级脱敏评审。
+
 后续从 `V004` 起只做追加迁移，规划包含细化权限、ledger/transfer、Agent/Conversation、完整 Safe Execution、Audit/Outbox 和版本化规则，不回写既有 migration。迁移只负责结构和稳定参考数据。大批量 Mock 交易由版本化 `SandboxDatasetGenerator` + `SandboxDatasetStore` 生成，避免把随机运行逻辑放入迁移；生成器本身有确定性测试，持久化后以 SHA-256 dataset digest 验证。
 
 ## 7. 可复现 Mock Banking Sandbox

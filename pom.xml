@@ -15,17 +15,26 @@
     <artifactId>silver-shield-banking-agent</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>silver-shield-banking-agent</name>
-    <description>Reproducible mock banking sandbox foundation for FinTechathon 2026</description>
+    <description>Secure read-only AI banking agent for FinTechathon 2026</description>
 
     <properties>
         <java.version>17</java.version>
         <maven.compiler.release>17</maven.compiler.release>
         <archunit.version>1.4.1</archunit.version>
         <testcontainers.version>1.21.3</testcontainers.version>
+        <spring-ai.version>1.1.8</spring-ai.version>
+        <excluded.test.groups>real-llm</excluded.test.groups>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
             <dependency>
                 <groupId>org.testcontainers</groupId>
                 <artifactId>testcontainers-bom</artifactId>
@@ -60,6 +69,10 @@
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.ai</groupId>
+            <artifactId>spring-ai-starter-model-openai</artifactId>
         </dependency>
         <dependency>
             <groupId>org.flywaydb</groupId>
@@ -123,6 +136,7 @@
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-surefire-plugin</artifactId>
                 <configuration>
+                    <excludedGroups>${excluded.test.groups}</excludedGroups>
                     <systemPropertyVariables>
                         <java.awt.headless>true</java.awt.headless>
                     </systemPropertyVariables>
@@ -130,4 +144,13 @@
             </plugin>
         </plugins>
     </build>
+
+    <profiles>
+        <profile>
+            <id>real-llm</id>
+            <properties>
+                <excluded.test.groups>none</excluded.test.groups>
+            </properties>
+        </profile>
+    </profiles>
 </project>

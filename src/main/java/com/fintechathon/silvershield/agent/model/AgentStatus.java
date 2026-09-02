@@ -1,0 +1,15 @@
+package com.fintechathon.silvershield.agent.model;
+
+public enum AgentStatus {
+    SUCCESS,
+    CAPABILITY_UNAVAILABLE,
+    TOOL_DENIED,
+    PROVIDER_UNAVAILABLE,
+    PROVIDER_TIMEOUT,
+    TOOL_TIMEOUT,
+    MALFORMED_MODEL_RESPONSE,
+    REPEATED_TOOL_CALL,
+    LIMIT_EXCEEDED,
+    CONTEXT_LIMIT_EXCEEDED,
+    GROUNDING_FAILED
+}

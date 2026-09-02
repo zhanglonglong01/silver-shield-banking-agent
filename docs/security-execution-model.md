@@ -190,12 +190,12 @@ DENY > REQUIRE_STEP_UP > REQUIRE_CONFIRMATION > ALLOW
 - Function Calling 使用精确白名单与 JSON Schema；不存在通用 HTTP、文件、SQL、Shell Tool。
 - Agent 不能声明“已确认”；确认状态只从数据库读取。
 - Tool 数据中的文本即使包含指令，也只能作为字符串返回，不能改变 Tool Registry 或计划。
-- 每次运行最多 8 个计划步骤、12 次 Tool Call、有限重复查询和总时限，循环自动终止。
-- 显式配置 `spring.ai.tools.resolution.fallback.enabled=false` 和 `spring.ai.chat.client.tool-calling.enabled=false`；未来只允许应用控制的 Tool Calling Loop。
+- M3 每次运行最多 5 个模型轮次、每轮 4 次且总计 12 次 Tool Call；相同调用不能重复，模型/Tool 都有独立超时和上下文限制。
+- 显式配置 `spring.ai.tools.resolution.fallback.enabled=false`、`spring.ai.chat.client.tool-calling.enabled=false`，并在 Spring AI request options 设置 `internalToolExecutionEnabled=false`；当前已由应用控制 Tool Calling Loop。
 
 ### 输出隔离
 
-- Grounding Validator 检查关键事实是否被 evidence 支持。
+- Grounding Guard 检查成功 Tool Evidence、关键数字和写操作回执；不一致时丢弃模型答案并使用确定性摘要或安全拒绝。
 - UI 对模型文本做安全渲染，不执行 HTML/脚本，不把模型输出转换为 REST 动作。
 - 模型声称“已完成”但没有 `SUCCEEDED` operation receipt 时，替换为安全响应：“尚未执行，请查看操作状态”。
 

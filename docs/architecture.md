@@ -42,7 +42,7 @@ flowchart LR
 
 ### Capability / Tool Policy 双重门禁
 
-M2 已实现每个请求动态生成不可变 `AllowedToolSetSnapshot`；未来 Agent Loop 直接复用该机制：
+M2 已实现每个请求动态生成不可变 `AllowedToolSetSnapshot`；M3 Agent Loop 直接复用该机制：
 
 ```text
 CapabilityPolicy.issue(
@@ -51,7 +51,7 @@ CapabilityPolicy.issue(
 ) -> signed allowed definitions + denied candidates + policyVersion + expiresAt
 ```
 
-1. Agent 只把快照中的 ToolCallback 通过 request-level `.tools(...)` 暴露给模型。
+1. Agent 只把快照中的定义转换为本次低层 `ChatModel` 请求的 definition-only ToolCallback；callback 本身禁止执行。
 2. 不为高风险或写操作注册 `defaultTools`；本项目默认不注册任何共享业务 `defaultTools`。
 3. 模型返回 Tool Call 后，Secure Tool Gateway 根据服务端上下文重新取得/复核策略快照，并验证精确的 `(toolName, version)` 是否仍在 Allowed Tool Set。
 4. Tool 未暴露、策略快照过期、上下文变化或执行端集合不包含该 Tool 时，一律 `TOOL_NOT_ALLOWED`；绝不依赖模型侧 JSON Schema 作为最终安全边界。
@@ -70,14 +70,32 @@ Principal → CapabilityPolicy → AllowedToolSetSnapshot
           → allow/deny/error audit (arguments hash only)
 ```
 
-框架级 Tool resolution fallback 永久关闭，ChatClient 自动 Tool Calling 永久关闭；未来由应用维护用户控制、逐步可观察的 Tool Calling Loop。
+框架级 Tool resolution fallback 永久关闭，ChatClient 自动 Tool Calling 永久关闭；M3 由应用维护用户控制、逐步可观察的 Tool Calling Loop，Spring AI options 还会逐请求设置 `internalToolExecutionEnabled=false`。
+
+M3 自控循环为：
+
+```text
+message + server Principal
+→ deterministic candidate selection
+→ CapabilityPolicy + signed snapshot
+→ snapshot-only JSON Schemas
+→ BankingModelClient / Spring AI ChatModel
+→ parse untrusted Tool Call
+→ SecureToolGateway
+→ ExecutionEvidence + deterministic BillingAnalysis
+→ Tool Result returned to model
+→ Grounding Guard
+→ answer + usedTools + evidenceIds
+```
+
+循环最多 5 轮、每轮最多 4 个 Tool Call、总计最多 12 个；模型和 Tool 分别有超时。相同 `(name, version, canonical args)` 不能重复，格式异常、上下文超限、Provider 不可用或审计异常均 fail closed。
 
 ## 3. 逻辑分层
 
 | 层 | 职责 | 明确禁止 |
 |---|---|---|
 | REST/API | 登录、聊天、确认、取消、操作状态、审计解释、统一响应 | 不写领域状态，不信任前端传入的 userId/role |
-| Agent | 意图识别、槽位补全、最多 8 步任务计划、多轮状态、结果表述 | 不访问 Repository，不做授权裁决，不计算余额/收益/账单总额 |
+| Agent | M3 意图候选选择、最多 5 轮 Tool Loop、短期多轮状态、结果表述 | 不访问 Repository/Handler/Registry，不做授权裁决，不自行计算重要金额 |
 | Tool Contract | 公开给模型的固定 JSON Schema、描述、版本和返回信封 | 不暴露内部实体、SQL、全卡号、规则阈值或密钥 |
 | Secure Tool Gateway | 白名单路由、参数/权限/风险/确认/幂等编排 | 未完成门禁不得调用写 Service |
 | Domain/Application | 转账、账单、理财、卡片、订阅的确定性用例 | 不接受模型身份，不绕过操作单执行写入 |
@@ -112,13 +130,15 @@ Principal → CapabilityPolicy → AllowedToolSetSnapshot
 
 ### Agent & Conversation
 
-管理对话、消息、结构化会话状态、Agent Run、任务计划与步骤。Redis 保存短期活动状态，MySQL 保存必要检查点和审计关联。
+M3 管理用户绑定的短期对话、Tool 交换和 evidence IDs。当前实现为进程内 TTL 存储；Redis/MySQL 检查点是后续多实例加固项，不作为权限事实。
 
 ### Safe Execution
 
 管理 Tool 注册表、操作单、参数摘要、策略决策、确认挑战、幂等、风险规则和审计事件，是所有写领域的唯一入口。
 
 ## 5. Agent 运行模型
+
+M3 当前只实现单一只读 Agent，不生成写操作 TaskPlan。以下输入隔离和证据原则已落地；DAG Planner 内容属于后续里程碑。
 
 ### 5.1 输入阶段
 
@@ -127,7 +147,7 @@ Principal → CapabilityPolicy → AllowedToolSetSnapshot
 3. 用户文本始终放入 `UNTRUSTED_USER_CONTENT` 数据区；交易描述、收款人备注等检索内容放入 `UNTRUSTED_BANK_DATA` 数据区。
 4. 高风险注入不是简单“靠关键词拦截”：即使检测漏报，后续白名单、Schema、权限和风险门禁仍默认拒绝。
 
-### 5.2 意图与计划
+### 5.2 后续意图与计划模型
 
 Agent 生成受 JSON Schema 约束的 `TaskPlan`：
 
@@ -240,6 +260,6 @@ Docker Compose 规划服务：
 7. `agent..` 和 `tool..` 均不得依赖任何 `..repository..`；该规则从 M1 起即使包中只有边界占位类也持续执行。
 8. Tool 执行前必须存在有效 Capability Policy snapshot，且 `(toolName, version)` 属于当前 Allowed Tool Set。
 
-## 12. M1 实现边界
+## 12. 当前实现边界
 
-M1 只实现可靠 Banking Sandbox、Flyway、MySQL/Redis、基础认证、AAL1 数据模型、本人资源查询、Docker Compose 和测试基础。`agent..`、`tool..` 仅建立未来边界和 ArchUnit 约束；不添加 Spring AI 依赖，不实现 LLM、Planner、Tool Calling Loop、RAG、Capability Policy 运行时代码或业务 Tool。
+M1/M2/M3 已实现 Sandbox、认证、Capability、只读 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单分析和 Execution Evidence。M3 不实现任何写 Tool、AAL2、确认流程、Multi-Agent、DAG Planner、RAG 或前端。

@@ -1,6 +1,6 @@
 # 项目目录与模块边界
 
-## 1. M1/M2 实际目录
+## 1. M1/M2/M3 实际目录
 
 ```text
 AI_Banking_Agent/
@@ -20,13 +20,20 @@ AI_Banking_Agent/
 │  │  ├─ domain/                  # Account/Card/Transaction/Payee/Subscription/WealthProduct
 │  │  └─ repository/
 │  ├─ sandbox/                    # 固定生成、持久化、digest、reset
-│  ├─ agent/boundary/             # 仅边界占位；禁止依赖 Tool Handler/Registry
+│  ├─ agent/
+│  │  ├─ api/                     # POST /api/v1/agent/chat
+│  │  ├─ application/             # 自控循环、账单统计、Grounding、限制器
+│  │  ├─ conversation/            # 用户绑定、TTL、长度受限的 M3 会话
+│  │  ├─ evidence/                # ExecutionEvidence 与结果摘要
+│  │  ├─ model/                   # API 状态与返回契约
+│  │  └─ provider/                # 厂商无关端口 + Spring AI ChatModel 适配
 │  ├─ tool/
 │  │  ├─ api/                     # M2 capability/execute REST 演示入口
 │  │  ├─ capability/              # Policy、HMAC AllowedToolSetSnapshot
 │  │  ├─ gateway/                 # 唯一执行入口、严格参数校验
 │  │  ├─ registry/                # 精确 name+version 显式白名单
 │  │  ├─ handler/                 # 7 个只读 Tool → BankingReadUseCase
+│  │  ├─ schema/                  # snapshot → 动态 Spring AI JSON Schema
 │  │  ├─ audit/                   # 审计输出 Port
 │  │  └─ model/                   # 无 Spring AI 依赖的 Tool 契约
 │  └─ audit/infrastructure/       # JPA 追加式 Tool Security Audit
@@ -39,7 +46,7 @@ AI_Banking_Agent/
 └─ README.md
 ```
 
-M1 已建立 Maven 单模块后端、Docker Compose、基础领域、认证、Sandbox 和测试。M2 在同一模块内加入 Capability、Registry、Gateway、只读 Handler 与持久化安全审计；`agent.boundary` 仍为空业务边界，尚未实现 Spring AI、Agent Planner、Tool Callback 或 RAG。
+M1 已建立工程、认证与 Sandbox；M2 加入 Capability、Registry、Gateway、只读 Handler 与持久化 Tool 审计；M3 加入 Spring AI Provider Adapter、自控 Agent Loop、确定性账单分析、Evidence 和 Grounding。仍未实现业务写操作、AAL2、Multi-Agent 或 RAG。
 
 ## 2. 后续目标目录（M2+）
 
@@ -210,6 +217,12 @@ POST   /api/v1/tools/allowed        # 动态策略快照；不返回 HMAC
 POST   /api/v1/tools/execute        # 当前仅只读；内部统一通过 SecureToolGateway
 ```
 
+M3 已实现：
+
+```text
+POST   /api/v1/agent/chat           # 自然语言只读查询；不返回 chain of thought
+```
+
 后续目标：
 
 ```text
@@ -233,15 +246,16 @@ M1 页面型 GET 与 M2 Tool 均从服务端 Principal 取得 user ID；Tool 参
 
 | Profile | 用途 | 模型 | 数据 |
 |---|---|---|---|
-| `dev` | M1 本地开发与当前 Compose | 无模型 | 固定 Mock 数据，可重置 |
-| `test` | 自动化测试 | 无模型 | Testcontainers + 固定 Mock 数据，可重置 |
-| `prod` | 生产安全基线 | 无模型 | 不生成 Mock 数据，不装配 reset |
+| `dev` | 本地开发与 Compose | 默认关闭；可用环境变量启用 OpenAI-compatible | 固定 Mock 数据，可重置 |
+| `test` | 自动化测试 | Fake Model；不使用付费模型 | Testcontainers + 固定 Mock 数据，可重置 |
+| `llm` | 显式真实模型集成 | Spring AI OpenAI-compatible | 与 test/dev 组合使用 |
+| `prod` | 生产安全基线 | 默认关闭；必须显式安全配置 | 不生成 Mock 数据，不装配 reset |
 | `demo`（后续） | 比赛演示 | 可配置模型 | 与生产隔离的固定 Mock 数据 |
 | `offline-demo`（后续） | 无网络演示兜底 | ScriptedChatModel | 同一 Mock 数据 |
 
 M1 只有 `dev/test` profile 装配 Sandbox initializer、store、reset service 和 controller；`prod` 不装配。未来若扩展真实环境，必须新增独立适配器和安全评审；当前项目不提供真实银行连接能力。
 
-M1 配置中即使尚未引入 Spring AI，也预置并测试以下 fail-safe 值，防止未来添加依赖后默认行为改变：
+M3 已引入 Spring AI，并持续测试以下 fail-safe 值：
 
 ```yaml
 spring:
