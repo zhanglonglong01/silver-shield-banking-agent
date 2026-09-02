@@ -13,7 +13,7 @@
 
 ## 2. 统一返回信封
 
-### M2 已实现的只读 Tool
+### M2/M4 已实现的 Tool
 
 | Tool | 参数 | Capability | 结果 |
 |---|---|---|---|
@@ -27,34 +27,34 @@
 
 这些 Handler 没有 Repository 依赖；身份只取自 `ToolExecutionContext`。M3 的 `SpringAiToolSchemaCatalog` 从同一 Handler 参数类型和 `ToolDefinition` 生成 JSON Schema，并只处理当前 snapshot 成员。
 
+M4 新增两个显式注册项：
+
+| Tool ID | 模式 | 参数 | 结果与边界 |
+|---|---|---|---|
+| `prepare_transfer@1.0` | `PREPARE_WRITE` | `sourceAccountId`, `payeeId`, `amount`, `currency`, `purpose?` | 校验并创建待确认操作/挑战；`confirmationRequired=true`；绝不扣款 |
+| `get_operation_status@1.0` | `READ_ONLY` | `operationId` | 只读取当前用户自己的操作状态、确认入口和回执引用 |
+
+`prepare_transfer` 的 `Idempotency-Key` 来自受信任 HTTP/Agent 执行上下文，不在模型可填写的 Tool 参数中。最终转账执行器不是 Tool，不在 Registry 和模型 Schema 中。
+
 ```json
 {
-  "tool": "transfer.create",
-  "version": "1.0",
-  "status": "AWAITING_CONFIRMATION",
-  "traceId": "8d58...",
-  "data": {},
-  "evidence": [
-    {
-      "evidenceId": "ev_...",
-      "type": "TRANSFER_PREVIEW",
-      "generatedAt": "2026-09-01T02:00:00Z",
-      "expiresAt": "2026-09-01T02:05:00Z"
-    }
-  ],
-  "operation": {
-    "operationId": "op_...",
-    "state": "AWAITING_CONFIRMATION",
-    "summary": "从尾号 8899 账户向张伟转账 CNY 800.00，手续费 CNY 0.00",
-    "expiresAt": "2026-09-01T02:05:00Z",
-    "requiresAal": "AAL1"
+  "invocationId": "...",
+  "requestId": "...",
+  "snapshotId": "...",
+  "toolName": "prepare_transfer",
+  "toolVersion": "1.0",
+  "decision": "ALLOW",
+  "reasonCode": "WRITE_OPERATION_PREPARED",
+  "explanation": "仅生成待确认操作；尚未发生资金或状态变更",
+  "data": {
+    "operationId": "...",
+    "status": "AWAITING_CONFIRMATION",
+    "requiredAal": "AAL1",
+    "challengeId": "...",
+    "confirmEndpoint": "/api/v1/operations/.../confirm"
   },
-  "decision": {
-    "decisionId": "rd_...",
-    "outcome": "REQUIRE_CONFIRMATION",
-    "reasonCodes": ["WRITE_ACTION_CONFIRMATION_REQUIRED"]
-  },
-  "error": null
+  "recordCount": 1,
+  "completedAt": "2026-09-02T12:00:00Z"
 }
 ```
 
@@ -102,15 +102,15 @@ Capability Policy 的输出不是一个裸字符串列表，而是包含 `decisi
 
 | Tool | 主要输入 | 确定性输出 | 权限/确认 |
 |---|---|---|---|
-| `transfer.preview` v1.0 | `sourceAccountId`, `beneficiaryId`, `amount`, `currency`, `purpose?` | 收付款掩码、金额、手续费、预计余额、限额占用、预览 ID/有效期 | `TRANSFER_CREATE`；本人账户/收款人；只读但执行完整预检 |
-| `transfer.create` v1.0 | `previewId`, `sourceAccountId`, `beneficiaryId`, `amount`, `currency`, `purpose?` | 不直接转账；创建/返回操作单与确认卡 | `TRANSFER_CREATE`；始终确认；按风险可能先要求 AAL2 |
+| `prepare_transfer` v1.0 | `sourceAccountId`, `payeeId`, `amount`, `currency`, `purpose?` | 收付款掩码、金额、操作 ID、challenge、有效期、所需 AAL | `TRANSFER_PREPARE`；本人账户/收款人；始终确认；只准备不扣款 |
+| `get_operation_status` v1.0 | `operationId` | 状态、所需 AAL、过期时间、确认入口、回执引用 | `OPERATION_READ`；只读本人操作 |
 
 关键参数规则：
 
-- `amount`: 字符串，正数，最多 2 位小数，`0.01..99999999.99`；解析为 BigDecimal。
+- `amount`: JSON 十进制数或十进制字符串，正数，最多 2 位小数，最大 `1000000.00`；解析为 BigDecimal。
 - `currency`: 当前仅 `CNY`，必须与来源账户、收款人和 preview 一致。
-- `purpose`: 可选，1..60 字，经过字符和注入标签处理，只作备注，绝不作指令。
-- `previewId`: 5 分钟有效，绑定用户和规范化参数；预览与创建参数不一致时拒绝。
+- `purpose`: 可选，最多 120 字，只作备注，绝不作指令。
+- 操作和 challenge 默认 5 分钟有效，绑定用户、规范化参数哈希与展示摘要哈希；确认端点不接受业务参数。
 
 执行成功后返回服务端转账回执、余额证据和审计 Trace；模型不能自行宣布“已到账”。
 

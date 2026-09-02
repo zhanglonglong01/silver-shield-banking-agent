@@ -18,6 +18,13 @@ public class SandboxDatasetStore {
 
     public void clear() {
         jdbcTemplate.update("DELETE FROM sandbox_dataset_metadata");
+        jdbcTemplate.update("DELETE FROM operation_audit");
+        jdbcTemplate.update("DELETE FROM transfer_order");
+        jdbcTemplate.update("DELETE FROM idempotency_record");
+        jdbcTemplate.update("DELETE FROM risk_decision");
+        jdbcTemplate.update("DELETE FROM confirmation_challenge");
+        jdbcTemplate.update("DELETE FROM operation_request");
+        jdbcTemplate.update("DELETE FROM tool_security_audit");
         jdbcTemplate.update("DELETE FROM account_transaction");
         jdbcTemplate.update("DELETE FROM subscription");
         jdbcTemplate.update("DELETE FROM payee");

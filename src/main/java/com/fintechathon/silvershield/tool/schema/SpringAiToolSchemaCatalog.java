@@ -12,7 +12,8 @@ import org.springframework.stereotype.Service;
 public class SpringAiToolSchemaCatalog implements ToolSchemaCatalog {
 
     private static final Set<String> FORBIDDEN_SECURITY_ARGUMENTS = Set.of(
-            "userId", "role", "capability", "authenticationLevel", "assuranceLevel", "allowedTools", "snapshot");
+            "userId", "role", "capability", "authenticationLevel", "assuranceLevel", "allowedTools", "snapshot",
+            "idempotencyKey", "requestId", "conversationId");
 
     private final ExplicitToolRegistry registry;
 

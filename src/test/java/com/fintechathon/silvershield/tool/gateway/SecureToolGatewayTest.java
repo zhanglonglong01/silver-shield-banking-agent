@@ -42,6 +42,7 @@ class SecureToolGatewayTest {
 
     private static final ToolId ACCOUNTS = new ToolId("get_accounts", "1.0");
     private static final ToolId BALANCE = new ToolId("get_account_balance", "1.0");
+    private static final ToolId PREPARE = new ToolId("prepare_transfer", "1.0");
     private final MutableClock clock = new MutableClock(Instant.parse("2026-09-01T08:00:00Z"));
     private final ToolSecurityProperties properties = new ToolSecurityProperties();
     private final List<ToolSecurityAuditRecord> audits = new ArrayList<>();
@@ -162,6 +163,43 @@ class SecureToolGatewayTest {
                 context, snapshot, ACCOUNTS.name(), ACCOUNTS.version(), json("accountId", UUID.randomUUID())))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("audit unavailable");
+    }
+
+    @Test
+    void confirmationRequiredPreparationToolMayOnlyPrepareThroughGateway() {
+        AtomicInteger executions = new AtomicInteger();
+        ToolHandler<TestArguments> prepareHandler = new ToolHandler<>() {
+            private final ToolDefinition definition = new ToolDefinition(PREPARE, "prepare only",
+                    ToolCapability.TRANSFER_PREPARE, ToolAccessMode.PREPARE_WRITE, "m4-v1",
+                    Set.of("accountId"), true);
+            @Override public ToolDefinition definition() { return definition; }
+            @Override public Class<TestArguments> argumentsType() { return TestArguments.class; }
+            @Override public ToolPayload execute(ToolExecutionContext context, TestArguments arguments) {
+                executions.incrementAndGet(); return new ToolPayload(List.of("AWAITING_CONFIRMATION"), 1);
+            }
+        };
+        ExplicitToolRegistry localRegistry = new ExplicitToolRegistry(List.of(prepareHandler));
+        DefaultCapabilityPolicy localPolicy = new DefaultCapabilityPolicy(localRegistry, properties, clock);
+        ObjectMapper mapper = JsonMapper.builder().addModule(new JavaTimeModule()).build();
+        SecureToolGateway localGateway = new SecureToolGateway(localPolicy, localRegistry,
+                new ToolArgumentsValidator(mapper, Validation.buildDefaultValidatorFactory().getValidator(), properties),
+                audits::add, clock);
+        AllowedToolSetSnapshot snapshot = localPolicy.issue(context, Set.of(PREPARE));
+
+        ToolGatewayResult result = localGateway.execute(context, snapshot, PREPARE.name(), PREPARE.version(),
+                json("accountId", UUID.randomUUID()));
+
+        assertThat(result.decision()).isEqualTo(ToolDecision.ALLOW);
+        assertThat(result.reasonCode()).isEqualTo("WRITE_OPERATION_PREPARED");
+        assertThat(executions).hasValue(1);
+    }
+
+    @Test
+    void toolDefinitionMustRejectUnsafeAccessModeAndConfirmationCombinations() {
+        assertThatThrownBy(() -> new ToolDefinition(PREPARE, "unsafe", ToolCapability.TRANSFER_PREPARE,
+                ToolAccessMode.PREPARE_WRITE, "m4-v1", Set.of(), false)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new ToolDefinition(ACCOUNTS, "unsafe", ToolCapability.ACCOUNT_READ,
+                ToolAccessMode.READ_ONLY, "m4-v1", Set.of(), true)).isInstanceOf(IllegalArgumentException.class);
     }
 
     private ToolHandler<TestArguments> handler(ToolId id, AtomicInteger executions) {

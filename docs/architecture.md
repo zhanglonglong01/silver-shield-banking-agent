@@ -262,4 +262,17 @@ Docker Compose 规划服务：
 
 ## 12. 当前实现边界
 
-M1/M2/M3 已实现 Sandbox、认证、Capability、只读 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单分析和 Execution Evidence。M3 不实现任何写 Tool、AAL2、确认流程、Multi-Agent、DAG Planner、RAG 或前端。
+M1–M4 已实现 Sandbox、认证、Capability、只读 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单分析、Execution Evidence，以及智能转账的准备/确认/执行闭环。M4 仅把 `prepare_transfer` 暴露为 `PREPARE_WRITE`；真正扣款不是 Tool，只能从独立确认 Controller 进入应用服务。卡片、理财、订阅写操作、Multi-Agent、DAG Planner、RAG 和前端尚未实现。
+
+M4 实际写链如下：
+
+```text
+Agent / Direct API
+  -> CapabilityPolicy 本轮动态集合
+  -> SecureToolGateway 再验证集合成员、Registry、定义摘要、严格参数
+  -> prepare_transfer（只创建 Operation + RiskDecision + Challenge）
+  -> 用户独立 POST /operations/{id}/confirm
+  -> owner/challenge/expiry/AAL/参数哈希/摘要哈希
+  -> 稳定顺序悲观锁账户 + FINAL_GUARD 重跑风险
+  -> Account + Transaction + TransferOrder + Audit 同事务提交
+```

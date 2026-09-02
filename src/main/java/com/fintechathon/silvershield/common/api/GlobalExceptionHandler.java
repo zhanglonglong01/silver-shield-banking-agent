@@ -8,6 +8,7 @@ import org.springframework.security.core.AuthenticationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import com.fintechathon.silvershield.security.AuthSessionService;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -31,6 +32,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({MethodArgumentNotValidException.class, IllegalArgumentException.class})
     ResponseEntity<ApiError> validation(Exception exception) {
         return response(HttpStatus.BAD_REQUEST, "VALIDATION_FAILED", "请求参数不符合要求");
+    }
+
+    @ExceptionHandler(AuthSessionService.StepUpDeniedException.class)
+    ResponseEntity<ApiError> stepUpDenied(AuthSessionService.StepUpDeniedException exception) {
+        return response(HttpStatus.FORBIDDEN, exception.reasonCode(), "AAL2 验证失败或当前不可用");
     }
 
     private ResponseEntity<ApiError> response(HttpStatus status, String code, String message) {

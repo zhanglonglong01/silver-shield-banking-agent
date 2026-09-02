@@ -1,5 +1,6 @@
 package com.fintechathon.silvershield.tool.model;
 
 public enum ToolAccessMode {
-    READ_ONLY
+    READ_ONLY,
+    PREPARE_WRITE
 }

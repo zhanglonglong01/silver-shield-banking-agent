@@ -44,4 +44,19 @@ public class Account {
     public BigDecimal getAvailableBalance() { return availableBalance; }
     public Status getStatus() { return status; }
     public BigDecimal getDailyTransferLimit() { return dailyTransferLimit; }
+    public void debit(BigDecimal amount) {
+        if (status != Status.ACTIVE || amount == null || amount.signum() <= 0
+                || availableBalance.compareTo(amount) < 0) {
+            throw new IllegalStateException("Account cannot be debited");
+        }
+        ledgerBalance = ledgerBalance.subtract(amount);
+        availableBalance = availableBalance.subtract(amount);
+    }
+    public void credit(BigDecimal amount) {
+        if (status != Status.ACTIVE || amount == null || amount.signum() <= 0) {
+            throw new IllegalStateException("Account cannot be credited");
+        }
+        ledgerBalance = ledgerBalance.add(amount);
+        availableBalance = availableBalance.add(amount);
+    }
 }

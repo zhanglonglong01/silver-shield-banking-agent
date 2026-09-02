@@ -34,8 +34,12 @@ public class ToolRuntimeService {
     }
 
     public ToolGatewayResult execute(
-            BankingPrincipal principal, String toolName, String toolVersion, JsonNode arguments) {
-        ToolExecutionContext context = context(principal);
+            BankingPrincipal principal, String toolName, String toolVersion, JsonNode arguments,
+            String idempotencyKey) {
+        UUID requestId = UUID.randomUUID();
+        ToolExecutionContext context = new ToolExecutionContext(
+                requestId, principal.userId(), principal.role(), principal.assuranceLevel(), "DIRECT_API",
+                idempotencyKey == null || idempotencyKey.isBlank() ? requestId.toString() : idempotencyKey, null);
         Set<ToolId> candidates;
         try {
             candidates = Set.of(new ToolId(toolName, toolVersion));
@@ -44,6 +48,11 @@ public class ToolRuntimeService {
         }
         AllowedToolSetSnapshot snapshot = capabilityPolicy.issue(context, candidates);
         return gateway.execute(context, snapshot, toolName, toolVersion, arguments);
+    }
+
+    public ToolGatewayResult execute(
+            BankingPrincipal principal, String toolName, String toolVersion, JsonNode arguments) {
+        return execute(principal, toolName, toolVersion, arguments, null);
     }
 
     private static ToolExecutionContext context(BankingPrincipal principal) {

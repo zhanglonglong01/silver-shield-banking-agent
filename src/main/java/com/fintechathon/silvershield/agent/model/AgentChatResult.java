@@ -9,10 +9,12 @@ public record AgentChatResult(
         AgentStatus status,
         List<String> usedTools,
         List<UUID> evidenceIds,
-        String executionSummary) {
+        String executionSummary,
+        List<PendingAction> pendingActions) {
 
     public AgentChatResult {
         usedTools = List.copyOf(usedTools);
         evidenceIds = List.copyOf(evidenceIds);
+        pendingActions = List.copyOf(pendingActions);
     }
 }

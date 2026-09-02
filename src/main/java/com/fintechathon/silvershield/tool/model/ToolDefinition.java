@@ -27,8 +27,9 @@ public record ToolDefinition(
         if (description.isBlank() || inputSchemaVersion.isBlank()) {
             throw new IllegalArgumentException("Tool definition text must not be blank");
         }
-        if (accessMode != ToolAccessMode.READ_ONLY || confirmationRequired) {
-            throw new IllegalArgumentException("M2 registry only accepts read-only tools without confirmation");
+        if ((accessMode == ToolAccessMode.READ_ONLY && confirmationRequired)
+                || (accessMode == ToolAccessMode.PREPARE_WRITE && !confirmationRequired)) {
+            throw new IllegalArgumentException("Tool access mode and confirmation policy are inconsistent");
         }
     }
 

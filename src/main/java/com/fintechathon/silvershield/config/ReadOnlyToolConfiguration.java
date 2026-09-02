@@ -10,6 +10,9 @@ import com.fintechathon.silvershield.tool.handler.ReadOnlyBankingTools.ListTrans
 import com.fintechathon.silvershield.tool.handler.ReadOnlyBankingTools.ListWealthProductsTool;
 import com.fintechathon.silvershield.tool.registry.ExplicitToolRegistry;
 import java.util.List;
+import com.fintechathon.silvershield.operation.application.TransferOperationUseCase;
+import com.fintechathon.silvershield.tool.handler.SecureTransferTools.PrepareTransferTool;
+import com.fintechathon.silvershield.tool.handler.SecureTransferTools.GetOperationStatusTool;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
@@ -31,6 +34,8 @@ public class ReadOnlyToolConfiguration {
     @Bean ListWealthProductsTool listWealthProductsTool(BankingReadUseCase banking) {
         return new ListWealthProductsTool(banking);
     }
+    @Bean PrepareTransferTool prepareTransferTool(TransferOperationUseCase operations) { return new PrepareTransferTool(operations); }
+    @Bean GetOperationStatusTool getOperationStatusTool(TransferOperationUseCase operations) { return new GetOperationStatusTool(operations); }
 
     @Bean
     ExplicitToolRegistry explicitToolRegistry(
@@ -40,9 +45,11 @@ public class ReadOnlyToolConfiguration {
             ListCardsTool listCards,
             ListPayeesTool listPayees,
             ListSubscriptionsTool listSubscriptions,
-            ListWealthProductsTool listWealthProducts) {
+            ListWealthProductsTool listWealthProducts,
+            PrepareTransferTool prepareTransfer,
+            GetOperationStatusTool getOperationStatus) {
         return new ExplicitToolRegistry(List.of(
                 getAccounts, getAccountBalance, listTransactions, listCards,
-                listPayees, listSubscriptions, listWealthProducts));
+                listPayees, listSubscriptions, listWealthProducts, prepareTransfer, getOperationStatus));
     }
 }

@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestHeader;
 
 @RestController
 @RequestMapping("/api/v1/agent")
@@ -26,8 +27,9 @@ public class AgentChatController {
     @PostMapping("/chat")
     public AgentChatResult chat(
             @AuthenticationPrincipal BankingPrincipal principal,
+            @RequestHeader(name="Idempotency-Key", required=false) String idempotencyKey,
             @Valid @RequestBody ChatRequest request) {
-        return agent.chat(principal, request.message(), request.conversationId());
+        return agent.chat(principal, request.message(), request.conversationId(), idempotencyKey);
     }
 
     public record ChatRequest(

@@ -61,6 +61,8 @@ class ArchitectureRulesTest {
                         "com.fintechathon.silvershield.agent.application.ReadOnlyBankingAgent",
                         "com.fintechathon.silvershield.agent.provider.SpringAiBankingModelClient",
                         "com.fintechathon.silvershield.tool.handler.ReadOnlyBankingTools$GetAccountsTool",
-                        "com.fintechathon.silvershield.tool.handler.ReadOnlyBankingTools$ListWealthProductsTool");
+                        "com.fintechathon.silvershield.tool.handler.ReadOnlyBankingTools$ListWealthProductsTool",
+                        "com.fintechathon.silvershield.tool.handler.SecureTransferTools$PrepareTransferTool",
+                        "com.fintechathon.silvershield.operation.application.SecureTransferOperationService");
     }
 }

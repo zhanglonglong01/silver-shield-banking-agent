@@ -191,6 +191,15 @@ DENY > REQUIRE_STEP_UP > REQUIRE_CONFIRMATION > ALLOW
 - Agent 不能声明“已确认”；确认状态只从数据库读取。
 - Tool 数据中的文本即使包含指令，也只能作为字符串返回，不能改变 Tool Registry 或计划。
 - M3 每次运行最多 5 个模型轮次、每轮 4 次且总计 12 次 Tool Call；相同调用不能重复，模型/Tool 都有独立超时和上下文限制。
+
+### M4 已落地的转账安全闭环
+
+- 模型最多调用 `prepare_transfer`，该 Tool 的成功含义固定为“操作已准备”，不是“转账成功”。
+- Gateway 的事务覆盖操作单、风险决策、challenge 与 Tool Security Audit；审计失败时准备操作整体回滚。
+- 确认 body 必须精确为 `challengeId + confirmed`；出现 `amount`、`payeeId` 等额外字段直接 400，不能在确认阶段换参。
+- ≥ 10,000 CNY、非可信或从未使用的收款人要求 AAL2；所有转账都要求显式确认。
+- 最终确认重新检查 owner、challenge、有效期、AAL、参数/摘要哈希、账户/收款人状态、余额、币种、日限额和频率。
+- 成功、拒绝和重放分别返回稳定 reason code；并发确认由操作行悲观锁和 `operation_id` 唯一回执共同约束。
 - 显式配置 `spring.ai.tools.resolution.fallback.enabled=false`、`spring.ai.chat.client.tool-calling.enabled=false`，并在 Spring AI request options 设置 `internalToolExecutionEnabled=false`；当前已由应用控制 Tool Calling Loop。
 
 ### 输出隔离

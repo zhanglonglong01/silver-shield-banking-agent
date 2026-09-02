@@ -10,4 +10,5 @@ public record AuthSession(
         String role,
         AssuranceLevel assuranceLevel,
         Instant issuedAt,
-        Instant expiresAt) {}
+        Instant expiresAt,
+        Instant aal2ExpiresAt) {}

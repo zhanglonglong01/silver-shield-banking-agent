@@ -147,8 +147,8 @@ erDiagram
 | 表 | 关键字段 | 约束/说明 |
 |---|---|---|
 | `tool_invocation` | `id`, `agent_run_id`, `plan_step_id`, `tool_name`, `tool_version`, `arguments_hash`, `arguments_redacted_json`, `status`, `started_at`, `ended_at`, `error_code`, `trace_id` | 每次调用留痕，敏感参数不落明文 |
-| `operation_request` | `id`, `user_id`, `conversation_id`, `plan_step_id`, `tool_name`, `tool_version`, `canonical_args_json`, `args_hash`, `display_summary_json`, `summary_hash`, `required_permission`, `required_aal`, `status`, `expires_at`, `result_ref_type`, `result_ref_id`, `failure_code`, `version`, `created_at`, `updated_at` | 业务参数不可在确认后修改；状态受状态机控制 |
-| `confirmation_challenge` | `id`, `operation_id`, `user_id`, `challenge_hash`, `binding_hash`, `status`, `attempt_count`, `expires_at`, `confirmed_at`, `consumed_at`, `version` | `operation_id` 唯一；PENDING/CONFIRMED/CONSUMED/EXPIRED/CANCELLED |
+| `operation_request` | `id`, `request_id`, `user_id`, `conversation_id`, `tool_name`, `tool_version`, `canonical_args_json`, `args_hash`, `display_summary_json`, `summary_hash`, `required_aal`, `status`, `idempotency_key_hash`, `expires_at`, `result_ref_type`, `result_ref_id`, `failure_code`, `version`, `created_at`, `updated_at` | 业务参数不可在确认后修改；状态受状态机控制 |
+| `confirmation_challenge` | `id`, `operation_id`, `user_id`, `status`, `expires_at`, `consumed_at`, `created_at`, `version` | `operation_id` 唯一；PENDING/CONSUMED/EXPIRED/CANCELLED；随机 ID 即挑战凭证且需同时通过 bearer/owner/AAL 校验 |
 | `risk_rule` | `id`, `rule_code`, `domain`, `version`, `priority`, `enabled`, `condition_json`, `effect`, `reason_template`, `valid_from`, `valid_to` | 规则版本不可原地覆盖，新增版本 |
 | `risk_decision` | `id`, `tool_invocation_id`, `operation_id`(nullable), `evaluation_phase`, `outcome`, `policy_version`, `input_hash`, `reason_codes_json`, `created_at` | 拒绝可能发生在操作单创建前；PRE_CONFIRM/FINAL_GUARD，ALLOW/CONFIRM/STEP_UP/DENY |
 | `risk_finding` | `id`, `decision_id`, `rule_id`, `rule_code`, `effect`, `reason_code`, `facts_redacted_json` | 支撑“为什么” |
@@ -185,7 +185,18 @@ M2 已追加：
 V003__tool_security_audit.sql
 ```
 
-M3 没有修改银行业务 schema。`ExecutionEvidence` 与短期 Conversation 当前为用户绑定、TTL 受限的进程内 Port 实现；这是只读阶段的接口预留，不把原始 Prompt 或完整 Tool 参数写入数据库。后续若持久化，将从 `V004` 追加迁移并进行字段级脱敏评审。
+M3 没有修改银行业务 schema。`ExecutionEvidence` 与短期 Conversation 当前为用户绑定、TTL 受限的进程内 Port 实现，不把原始 Prompt 写入数据库。
+
+M4 的 `V004__secure_transfer_operations.sql` 已落地以下表：
+
+- `operation_request`：不可变规范参数/展示摘要及各自 SHA-256、所需 AAL、状态、过期与回执引用。
+- `confirmation_challenge`：按用户和操作单绑定的一次性随机挑战。
+- `risk_decision`：保存 `PRE_CONFIRM`/`FINAL_GUARD`、规则版本、输入指纹、结论、原因码和安全解释。
+- `idempotency_record`：`user + scope + key hash` 唯一，绑定请求哈希和操作单。
+- `transfer_order`：成功转账回执及扣款前后余额；`operation_id` 唯一。
+- `operation_audit`：准备、确认、最终复核的允许/拒绝轨迹。
+
+确认成功在一个 MySQL 事务内更新账户、写入一至两条 `account_transaction`、生成 `transfer_order`、消费 challenge 并落审计。Redis 只保存短期 bearer/AAL2 会话，不作为余额或操作状态真相源。
 
 后续从 `V004` 起只做追加迁移，规划包含细化权限、ledger/transfer、Agent/Conversation、完整 Safe Execution、Audit/Outbox 和版本化规则，不回写既有 migration。迁移只负责结构和稳定参考数据。大批量 Mock 交易由版本化 `SandboxDatasetGenerator` + `SandboxDatasetStore` 生成，避免把随机运行逻辑放入迁移；生成器本身有确定性测试，持久化后以 SHA-256 dataset digest 验证。
 

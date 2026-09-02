@@ -4,9 +4,9 @@
 
 本项目面向 2026 FinTechathon 深圳国际金融科技大赛国内赛道。目标是在完全模拟的银行沙箱中，让用户通过自然语言完成银行任务，同时对每一次允许、待确认和拒绝给出可验证、可审计的依据。
 
-当前状态：**M3——Read-Only Banking Agent 已实现**。已接入 Spring AI 1.1.8 和 OpenAI-compatible Provider 适配，仍不包含任何业务写操作、AAL2、Multi-Agent、RAG 或前端。
+当前状态：**M4——智能转账安全闭环已实现**。Agent 可创建待确认转账，但不能执行扣款；资金变化只能通过独立确认 API，经 AAL、最终风控、悲观锁、幂等和审计后完成。卡片/理财/订阅写操作、Multi-Agent、RAG 和前端仍未实现。
 
-## M1/M2/M3 快速启动
+## M1–M4 快速启动
 
 前置条件：Docker Compose。所有账号、账户、卡片、流水、收款人和产品均为虚构数据。
 
@@ -43,7 +43,8 @@ Content-Type: application/json
 | `POST` | `/api/v1/auth/login` | 用户名密码登录，签发 AAL1 会话 |
 | `POST` | `/api/v1/auth/logout` | 注销当前 token |
 | `GET` | `/api/v1/auth/me` | 当前用户与 AAL |
-| `GET` | `/api/v1/auth/assurance` | AAL1/AAL2 预留接口；M1 不升级 AAL2 |
+| `GET` | `/api/v1/auth/assurance` | 查询当前认证强度与 AAL2 升级可用性 |
+| `POST` | `/api/v1/auth/step-up` | dev/test 模拟 AAL2 升级，默认演示码 `246810`，有效 5 分钟 |
 | `GET` | `/api/v1/accounts` | 本人账户列表 |
 | `GET` | `/api/v1/accounts/{id}` | 本人账户；他人资源统一返回 404 |
 | `GET` | `/api/v1/accounts/{id}/transactions?from=2026-03-01&to=2026-08-31&limit=50` | 本人流水 |
@@ -54,10 +55,13 @@ Content-Type: application/json
 | `GET` | `/api/v1/sandbox/metadata` | dev/test 数据集版本、seed、摘要和行数 |
 | `POST` | `/api/v1/sandbox/reset` | 仅 dev/test + DEMO_ADMIN；确定性重置 |
 | `POST` | `/api/v1/tools/allowed` | 按当前 Principal、AAL 和候选集合生成短期 Allowed Tool Set |
-| `POST` | `/api/v1/tools/execute` | 通过 SecureToolGateway 执行一个只读 Tool |
-| `POST` | `/api/v1/agent/chat` | 只读银行 Agent；返回 answer、status、usedTools、evidenceIds |
+| `POST` | `/api/v1/tools/execute` | 通过 SecureToolGateway 执行只读或“仅准备写入”Tool；转账准备建议携带 `Idempotency-Key` |
+| `POST` | `/api/v1/agent/chat` | 银行 Agent；转账只返回 `pendingActions`，不会在对话中扣款 |
+| `GET` | `/api/v1/operations/{operationId}` | 查询本人操作单状态；他人操作统一 404 |
+| `POST` | `/api/v1/operations/{operationId}/confirm` | 独立确认，只接受 `challengeId` 与 `confirmed`，不接受金额等业务参数 |
 
 `prod` profile 不装配 Sandbox initializer、reset service 或 reset controller。
+`prod` 默认不配置模拟 AAL2 验证码，因此 step-up fail closed；演示码只用于 dev/test 虚构沙箱。
 
 dev/test 一键 reset：
 
@@ -74,6 +78,43 @@ Content-Type: application/json
 
 {"message":"我这个月花了多少钱？","conversationId":null}
 ```
+
+### M4 转账演示
+
+1. 先用 `GET /api/v1/accounts` 与 `GET /api/v1/payees` 取得当前用户可见的 `sourceAccountId` 和 `payeeId`。
+2. 通过 Gateway 准备转账（此时余额不变）：
+
+```http
+POST /api/v1/tools/execute
+Authorization: Bearer <token>
+Idempotency-Key: demo-transfer-0001
+Content-Type: application/json
+
+{
+  "toolName":"prepare_transfer",
+  "toolVersion":"1.0",
+  "arguments":{
+    "sourceAccountId":"<owned-account-id>",
+    "payeeId":"<owned-payee-id>",
+    "amount":"88.00",
+    "currency":"CNY",
+    "purpose":"比赛演示"
+  }
+}
+```
+
+3. 若返回 `requiredAal=AAL2`，调用 `POST /api/v1/auth/step-up`，body 为 `{"code":"246810"}`；再使用同一 bearer token 发起下一步。
+4. 从准备结果取得 `operationId` 与 `challengeId`，显式确认：
+
+```http
+POST /api/v1/operations/<operationId>/confirm
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{"challengeId":"<challenge-id>","confirmed":true}
+```
+
+确认接口不接受金额、收款人或来源账户；重复确认返回原始回执，不会重复扣款。聊天中输入“确认”也不会调用最终执行器。
 
 默认 `SPRING_AI_CHAT_MODEL=none`，无 API Key 也能安全启动。需要使用 OpenAI-compatible Provider 时，在本机环境变量或未提交的 `.env` 中配置 `SPRING_AI_CHAT_MODEL=openai`、`OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `OPENAI_MODEL`；禁止把真实密钥写入仓库。
 
@@ -189,9 +230,11 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ### M4：智能转账闭环
 
-- 实现收款人查找、转账预览、操作单、确认、AAL2、原子记账和回执。
-- 实现余额/币种/限额/新收款人/频率规则、并发扣款和重复请求保护。
-- 完成正常、参数异常、余额不足、越权、注入、伪造 ID、确认重放测试。
+- [x] 实现收款人查找、`prepare_transfer` 操作单、挑战绑定、独立确认、AAL2、原子记账和回执。
+- [x] 实现余额、币种、账户/收款人状态、日限额、新收款人、高金额和十分钟频率规则。
+- [x] 确认时校验参数/摘要哈希，按稳定 UUID 顺序悲观锁账户，并重跑最终风控防止 TOCTOU。
+- [x] `Idempotency-Key` 按用户和转账 scope 绑定参数哈希；重放返回同一操作/回执，换参冲突拒绝。
+- [x] 完成正常、参数异常、余额不足、AAL2、越权、注入、伪造 ID、参数走私、并发确认和确认重放测试。
 
 退出条件：转账只能通过安全执行链成功；数据库和审计记录保持一致。
 
@@ -249,10 +292,12 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ## Known risks
 
-- 当前 Spring Boot 管理的 Flyway 版本在日志中声明已测试的 MySQL 上限为 8.1，而 Compose/Testcontainers 使用 MySQL 8.4。当前 3 个 migration、Compose 启动和完整测试均通过；按约束暂不改版本，提交前继续评估升级 Flyway 或固定 MySQL。
+- 当前 Spring Boot 管理的 Flyway 版本在日志中声明已测试的 MySQL 上限为 8.1，而 Compose/Testcontainers 使用 MySQL 8.4。当前 4 个 migration、Compose 启动和完整测试均通过；按约束暂不改版本，后续评估升级 Flyway 或固定 MySQL。
 - M2 的 Allowed Tool Set 使用进程内随机 HMAC 密钥；应用重启会使尚未过期的旧快照失效。这是安全的 fail-closed 行为，未来多实例部署需改为受管共享密钥或服务端快照存储。
 - M3 的对话历史和 `ExecutionEvidence` 当前为进程内、按用户绑定且带 TTL 的存储；重启会丢失，多实例部署需迁移到 Redis/持久化 evidence store。
 - 默认环境没有真实 LLM API Key，完整 CI 使用确定性 Fake Model；真实 Provider 的网络、模型行为和费用需要通过独立 `real-llm` profile 验证。
 - Grounding Guard 当前验证执行状态、Evidence ID 和关键数字，并提供确定性回退；更强的字段级引用证明和持久化证据链留待后续阶段。
+- M4 幂等准备使用数据库唯一约束并在单实例内串行化；当前 Compose 单实例已通过并发确认测试，多实例下的幂等键争用需在部署阶段加入数据库 advisory lock 或专用协调器。
+- dev/test AAL2 是固定沙箱码，仅用于比赛演示；没有真实 OTP、设备绑定、尝试次数限流或认证事件审计，绝不能作为生产认证实现。
 
-M3 完成后停止，等待验收；未进入 M4 写操作阶段。
+M4 完成后停止，等待验收；未进入 M5 卡片、理财和订阅写操作阶段。

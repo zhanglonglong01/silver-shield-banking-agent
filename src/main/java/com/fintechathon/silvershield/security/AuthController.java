@@ -45,13 +45,22 @@ public class AuthController {
     public MeResponse me(@AuthenticationPrincipal BankingPrincipal principal) {
         return new MeResponse(
                 new CurrentUser(principal.userId(), principal.getUsername(), principal.displayName(), principal.role().name()),
-                principal.assuranceLevel(), false);
+                principal.assuranceLevel(), sessionService.stepUpAvailable());
     }
 
     @GetMapping("/assurance")
     public AssuranceResponse assurance(@AuthenticationPrincipal BankingPrincipal principal) {
-        return new AssuranceResponse(principal.assuranceLevel(), AssuranceLevel.AAL2, false,
-                "AAL2 接口已预留，将在高风险操作阶段实现");
+        boolean available = sessionService.stepUpAvailable() && principal.assuranceLevel() != AssuranceLevel.AAL2;
+        return new AssuranceResponse(principal.assuranceLevel(), AssuranceLevel.AAL2, available,
+                available ? "高风险转账可通过 sandbox AAL2 验证临时升级会话" : "当前不可升级或已处于 AAL2");
+    }
+
+    @PostMapping("/step-up")
+    public StepUpResponse stepUp(
+            @RequestHeader(HttpHeaders.AUTHORIZATION) String authorization,
+            @Valid @RequestBody StepUpRequest request) {
+        AuthSession session = sessionService.stepUp(bearer(authorization), request.code());
+        return new StepUpResponse(session.assuranceLevel(), session.aal2ExpiresAt());
     }
 
     @PostMapping("/logout")
@@ -81,4 +90,14 @@ public class AuthController {
             AssuranceLevel nextLevel,
             boolean upgradeAvailable,
             String message) {}
+
+    public record StepUpRequest(@NotBlank @Size(min = 6, max = 12) String code) {}
+    public record StepUpResponse(AssuranceLevel assuranceLevel, Instant expiresAt) {}
+
+    private static String bearer(String authorization) {
+        if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
+            throw new AuthSessionService.StepUpDeniedException("AUTH_SESSION_INVALID");
+        }
+        return authorization.substring(BEARER_PREFIX.length()).trim();
+    }
 }

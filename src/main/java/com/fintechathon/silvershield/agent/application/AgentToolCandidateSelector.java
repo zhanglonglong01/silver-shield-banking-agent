@@ -13,11 +13,22 @@ public class AgentToolCandidateSelector {
     static final ToolId GET_ACCOUNT_BALANCE = new ToolId("get_account_balance", "1.0");
     static final ToolId LIST_TRANSACTIONS = new ToolId("list_transactions", "1.0");
     static final ToolId LIST_SUBSCRIPTIONS = new ToolId("list_subscriptions", "1.0");
+    static final ToolId LIST_PAYEES = new ToolId("list_payees", "1.0");
+    static final ToolId PREPARE_TRANSFER = new ToolId("prepare_transfer", "1.0");
+    static final ToolId GET_OPERATION_STATUS = new ToolId("get_operation_status", "1.0");
 
     public Set<ToolId> select(String userMessage) {
         String normalized = userMessage.toLowerCase(Locale.ROOT);
         LinkedHashSet<ToolId> candidates = new LinkedHashSet<>();
-        if (containsAny(normalized,
+        if (containsAny(normalized,"确认执行","确认转账","操作状态","转账状态","confirm transfer","operation status")) {
+            candidates.add(GET_OPERATION_STATUS);
+        } else if (containsAny(normalized,"转账","汇款","打款","transfer","remit")) {
+            candidates.add(GET_ACCOUNTS);
+            candidates.add(GET_ACCOUNT_BALANCE);
+            candidates.add(LIST_PAYEES);
+            candidates.add(PREPARE_TRANSFER);
+            candidates.add(GET_OPERATION_STATUS);
+        } else if (containsAny(normalized,
                 "账单", "消费", "支出", "收入", "流水", "异常", "商户", "订阅", "代扣", "花",
                 "spend", "bill", "transaction", "subscription", "expense", "income")) {
             candidates.add(GET_ACCOUNTS);

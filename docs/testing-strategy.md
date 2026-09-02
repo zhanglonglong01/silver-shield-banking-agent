@@ -157,6 +157,15 @@ M2 尚未接入 LLM。下列额外字段和恶意参数测试统一称为 **inje
 - Backend：编译、Spotless/Checkstyle（选定其一）、单元/集成/ArchUnit 全通过。
 - Frontend：TypeScript strict、ESLint、Vitest、关键 Playwright 全通过。
 - JaCoCo 建议全局行覆盖 ≥ 80%、分支 ≥ 70%；`execution`、`risk`、`confirmation`、`idempotency` 核心包分支 ≥ 90%。覆盖率不能替代矩阵用例。
+
+### M4 已落地的转账回归
+
+- 正常 AAL1 准备/确认/原子扣款/回执，以及高金额 AAL2 先拒绝、升级后成功。
+- 余额不足、非法金额/字段、币种/资源不匹配、伪造 ID、跨用户 operation/challenge 均拒绝且零资金副作用。
+- Prompt Injection 与额外安全字段在严格 Tool 参数层拒绝；模型伪称“已转账”由 Grounding 改写为“仅待确认”。
+- 确认接口的业务参数走私返回 400；对话中的“确认”不能触发最终执行器。
+- 准备后篡改余额时 `FINAL_GUARD` 拒绝，证明确认不复用陈旧预检结论。
+- 相同幂等键同参数返回原操作，换参拒绝；确认重放返回原回执；并发双确认只有一笔 `transfer_order` 和一次扣款。
 - 使用 PIT 等 mutation testing 针对金额比较、权限反转、决策优先级、确认过期和幂等条件，核心 mutation score 建议 ≥ 80%。
 - Flyway 从空库升级、重复启动、迁移校验和 Mock 数据摘要一致性通过。
 - Docker Compose smoke test：健康检查、登录、查询、待确认、成功、拒绝解释、重启后操作状态恢复。

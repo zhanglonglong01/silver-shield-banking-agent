@@ -1,4 +1,6 @@
 silvershield:
+  security:
+    sandbox-aal2-code: ${SANDBOX_AAL2_CODE:246810}
   sandbox:
     enabled: true
     dataset-version: fintechathon-demo-v1

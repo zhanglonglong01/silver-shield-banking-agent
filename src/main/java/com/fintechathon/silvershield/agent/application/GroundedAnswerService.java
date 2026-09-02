@@ -49,9 +49,24 @@ public class GroundedAnswerService {
                     AgentStatus.CAPABILITY_UNAVAILABLE,
                     "拒绝了改变身份或访问他人资源的请求");
         }
-        if (isWriteRequest(normalizedUser) || FAKE_WRITE_SUCCESS.matcher(modelAnswer).find()) {
+        boolean successfulPreparation = executions.stream().anyMatch(e -> e.call().name().equals("prepare_transfer")
+                && e.result().decision() == ToolDecision.ALLOW);
+        if (successfulPreparation) {
+            JsonNode operation = executions.stream().filter(e -> e.call().name().equals("prepare_transfer"))
+                    .filter(e -> e.result().decision() == ToolDecision.ALLOW).findFirst().orElseThrow()
+                    .evidence().relevantStructuredResult();
+            JsonNode summary = operation.path("summary");
             return new GroundedAnswer(
-                    "当前是只读银行智能体，未提供转账、冻结、取消订阅或理财购买等写操作，因此没有执行任何资金或状态变更。",
+                    "已创建待确认转账：从 %s 向 %s 转账 %s %s，所需认证等级 %s。当前尚未扣款；请通过独立确认端点完成或取消。"
+                            .formatted(summary.path("sourceAccount").asText(), summary.path("payee").asText(),
+                                    summary.path("amount").asText(), summary.path("currency").asText(),
+                                    operation.path("requiredAal").asText()),
+                    AgentStatus.SUCCESS, "仅准备了受挑战绑定的转账操作，资金未变化");
+        }
+        if ((isUnsupportedWriteRequest(normalizedUser) || FAKE_WRITE_SUCCESS.matcher(modelAnswer).find())
+                && !successfulPreparation) {
+            return new GroundedAnswer(
+                    "当前除转账准备外仍是只读能力；冻结、取消订阅或理财购买等写操作不可用，因此没有执行任何资金或状态变更。未经独立确认端点，不会发生资金变化。",
                     AgentStatus.CAPABILITY_UNAVAILABLE,
                     "未暴露写操作 Tool，且没有成功写操作证据");
         }
@@ -203,10 +218,10 @@ public class GroundedAnswerService {
         }
     }
 
-    private static boolean isWriteRequest(String text) {
-        return text.contains("转账") || text.contains("汇款") || text.contains("冻结")
+    private static boolean isUnsupportedWriteRequest(String text) {
+        return text.contains("冻结")
                 || text.contains("挂失") || text.contains("取消订阅") || text.contains("购买理财")
-                || text.contains("赎回") || text.contains("transfer") || text.contains("freeze")
+                || text.contains("赎回") || text.contains("freeze")
                 || text.contains("delete account");
     }
 

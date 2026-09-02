@@ -32,6 +32,16 @@ public class AccountTransaction {
 
     protected AccountTransaction() {}
 
+    public AccountTransaction(UUID id, UUID accountId, Instant bookingTime, Direction direction,
+            BigDecimal amount, String currency, String merchantName, String description,
+            String counterpartyMasked, BigDecimal balanceAfter) {
+        this.id=id; this.accountId=accountId; this.bookingTime=bookingTime; this.direction=direction;
+        this.amount=amount; this.currency=currency; this.categoryCode="TRANSFER"; this.merchantName=merchantName;
+        this.description=description == null || description.isBlank() ? "模拟转账" : description;
+        this.counterpartyMasked=counterpartyMasked; this.status=Status.POSTED;
+        this.balanceAfter=balanceAfter;
+    }
+
     public UUID getId() { return id; }
     public UUID getAccountId() { return accountId; }
     public Instant getBookingTime() { return bookingTime; }

@@ -1,6 +1,6 @@
 # 项目目录与模块边界
 
-## 1. M1/M2/M3 实际目录
+## 1. M1–M4 实际目录
 
 ```text
 AI_Banking_Agent/
@@ -19,6 +19,11 @@ AI_Banking_Agent/
 │  │  ├─ application/             # 带 owner scope 的查询服务
 │  │  ├─ domain/                  # Account/Card/Transaction/Payee/Subscription/WealthProduct
 │  │  └─ repository/
+│  ├─ operation/                  # M4 转账操作单、风控、确认、幂等、回执
+│  │  ├─ api/                     # 独立查询/确认 REST；不接受业务参数换参
+│  │  ├─ application/             # 最终安全复核与原子转账服务
+│  │  ├─ domain/                  # Operation/Challenge/Risk/Idempotency/Transfer/Audit
+│  │  └─ repository/
 │  ├─ sandbox/                    # 固定生成、持久化、digest、reset
 │  ├─ agent/
 │  │  ├─ api/                     # POST /api/v1/agent/chat
@@ -32,21 +37,21 @@ AI_Banking_Agent/
 │  │  ├─ capability/              # Policy、HMAC AllowedToolSetSnapshot
 │  │  ├─ gateway/                 # 唯一执行入口、严格参数校验
 │  │  ├─ registry/                # 精确 name+version 显式白名单
-│  │  ├─ handler/                 # 7 个只读 Tool → BankingReadUseCase
+│  │  ├─ handler/                 # 7 个只读 + 1 个操作查询 + 1 个仅准备转账 Tool
 │  │  ├─ schema/                  # snapshot → 动态 Spring AI JSON Schema
 │  │  ├─ audit/                   # 审计输出 Port
 │  │  └─ model/                   # 无 Spring AI 依赖的 Tool 契约
 │  └─ audit/infrastructure/       # JPA 追加式 Tool Security Audit
 ├─ src/main/resources/
 │  ├─ application*.yml
-│  └─ db/migration/V001..V003
+│  └─ db/migration/V001..V004
 ├─ src/test/java/...              # unit、ArchUnit、Testcontainers
 ├─ scripts/reset-sandbox.ps1
 ├─ docs/
 └─ README.md
 ```
 
-M1 已建立工程、认证与 Sandbox；M2 加入 Capability、Registry、Gateway、只读 Handler 与持久化 Tool 审计；M3 加入 Spring AI Provider Adapter、自控 Agent Loop、确定性账单分析、Evidence 和 Grounding。仍未实现业务写操作、AAL2、Multi-Agent 或 RAG。
+M1 已建立工程、认证与 Sandbox；M2 加入 Capability、Registry、Gateway、只读 Handler 与持久化 Tool 审计；M3 加入 Spring AI Provider Adapter、自控 Agent Loop、确定性账单分析、Evidence 和 Grounding；M4 加入 `operation/{api,application,domain,repository}`、AAL2 和安全转账闭环。仍未实现卡片/理财/订阅写操作、Multi-Agent 或 RAG。
 
 ## 2. 后续目标目录（M2+）
 

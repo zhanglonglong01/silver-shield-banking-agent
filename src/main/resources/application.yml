@@ -75,10 +75,19 @@ management:
 silvershield:
   security:
     session-ttl: PT2H
+    aal2-ttl: PT5M
+    sandbox-aal2-code: ${SANDBOX_AAL2_CODE:}
   tool-security:
-    policy-version: m2-read-only-v1
+    policy-version: m4-transfer-v1
     snapshot-ttl: PT60S
     max-arguments-bytes: 8192
+  transfer-security:
+    operation-ttl: PT5M
+    idempotency-ttl: PT24H
+    aal2-threshold: 10000.00
+    velocity-window: PT10M
+    velocity-max-count: 3
+    velocity-max-amount: 20000.00
   agent:
     max-tool-rounds: 5
     max-tool-calls-per-round: 4

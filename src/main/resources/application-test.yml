@@ -1,6 +1,7 @@
 silvershield:
   security:
     session-ttl: PT30M
+    sandbox-aal2-code: 246810
   sandbox:
     enabled: true
     dataset-version: fintechathon-demo-v1

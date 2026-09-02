@@ -47,6 +47,8 @@ class AuthSessionServiceTest {
                 .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         BankingSecurityProperties properties = new BankingSecurityProperties();
         properties.setSessionTtl(Duration.ofHours(2));
+        properties.setAal2Ttl(Duration.ofMinutes(5));
+        properties.setSandboxAal2Code("246810");
         Clock clock = Clock.fixed(Instant.parse("2026-09-01T02:00:00Z"), ZoneOffset.UTC);
         service = new AuthSessionService(redis, objectMapper, properties, clock);
     }
@@ -76,5 +78,31 @@ class AuthSessionServiceTest {
 
         assertThat(key.getValue()).startsWith("silvershield:auth:session:");
         assertThat(key.getValue()).doesNotContain(issued.accessToken());
+    }
+
+    @Test
+    void sandboxStepUpMustUpgradeOnlyWithConfiguredCode() {
+        BankingPrincipal principal = new BankingPrincipal(
+                UUID.randomUUID(), "demo.alice", "hash", "林晓岚（虚构）",
+                AppUser.Role.CUSTOMER, AppUser.Status.ACTIVE, AssuranceLevel.AAL1);
+        AuthSessionService.IssuedSession issued = service.issue(principal);
+
+        AuthSession upgraded = service.stepUp(issued.accessToken(), "246810");
+
+        assertThat(upgraded.assuranceLevel()).isEqualTo(AssuranceLevel.AAL2);
+        assertThat(upgraded.aal2ExpiresAt()).isEqualTo(Instant.parse("2026-09-01T02:05:00Z"));
+        assertThat(service.find(issued.accessToken())).contains(upgraded);
+    }
+
+    @Test
+    void sandboxStepUpMustFailClosedForWrongCode() {
+        BankingPrincipal principal = new BankingPrincipal(
+                UUID.randomUUID(), "demo.alice", "hash", "林晓岚（虚构）",
+                AppUser.Role.CUSTOMER, AppUser.Status.ACTIVE, AssuranceLevel.AAL1);
+        AuthSessionService.IssuedSession issued = service.issue(principal);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.stepUp(issued.accessToken(), "000000"))
+                .isInstanceOf(AuthSessionService.StepUpDeniedException.class);
+        assertThat(service.find(issued.accessToken()).orElseThrow().assuranceLevel()).isEqualTo(AssuranceLevel.AAL1);
     }
 }

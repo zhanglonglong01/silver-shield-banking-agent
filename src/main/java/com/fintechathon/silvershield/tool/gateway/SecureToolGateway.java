@@ -21,6 +21,7 @@ import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class SecureToolGateway {
@@ -44,6 +45,7 @@ public class SecureToolGateway {
         this.clock = clock;
     }
 
+    @Transactional
     public ToolGatewayResult execute(
             ToolExecutionContext context,
             AllowedToolSetSnapshot snapshot,
@@ -81,10 +83,13 @@ public class SecureToolGateway {
                     "TOOL_DEFINITION_CHANGED", "Tool 定义与策略快照不一致", null, 0,
                     argumentsHash, startedNanos);
         }
-        if (handler.definition().accessMode() != ToolAccessMode.READ_ONLY
-                || handler.definition().confirmationRequired()) {
+        boolean safeRead = handler.definition().accessMode() == ToolAccessMode.READ_ONLY
+                && !handler.definition().confirmationRequired();
+        boolean safePreparation = handler.definition().accessMode() == ToolAccessMode.PREPARE_WRITE
+                && handler.definition().confirmationRequired();
+        if (!safeRead && !safePreparation) {
             return finish(invocationId, context, snapshot, id.name(), id.version(), ToolDecision.DENY,
-                    "WRITE_TOOL_BLOCKED_IN_M2", "M2 Gateway 只允许无确认的只读 Tool", null, 0,
+                    "UNSAFE_TOOL_DEFINITION", "Tool 的访问模式与确认策略不符合安全模型", null, 0,
                     argumentsHash, startedNanos);
         }
 
@@ -98,9 +103,16 @@ public class SecureToolGateway {
 
         try {
             ToolPayload payload = invoke(handler, context, validation.arguments());
+            String reason = safeRead ? "READ_ONLY_EXECUTED" : "WRITE_OPERATION_PREPARED";
+            String explanation = safeRead ? "权限、快照、白名单和参数校验均通过"
+                    : "仅生成待确认操作；尚未发生资金或状态变更";
             return finish(invocationId, context, snapshot, id.name(), id.version(), ToolDecision.ALLOW,
-                    "READ_ONLY_EXECUTED", "权限、快照、白名单和参数校验均通过", payload.data(),
+                    reason, explanation, payload.data(),
                     payload.recordCount(), argumentsHash, startedNanos);
+        } catch (ToolDeniedException exception) {
+            return finish(invocationId, context, snapshot, id.name(), id.version(), ToolDecision.DENY,
+                    exception.reasonCode(), exception.safeExplanation(), null, 0,
+                    argumentsHash, startedNanos);
         } catch (ResourceNotFoundException exception) {
             return finish(invocationId, context, snapshot, id.name(), id.version(), ToolDecision.DENY,
                     "RESOURCE_NOT_AVAILABLE", "资源不存在或不属于当前用户", null, 0,

@@ -16,6 +16,7 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
@@ -39,8 +40,9 @@ public class ToolRuntimeController {
     @PostMapping("/execute")
     public ToolGatewayResult execute(
             @AuthenticationPrincipal BankingPrincipal principal,
+            @RequestHeader(name = "Idempotency-Key", required = false) String idempotencyKey,
             @Valid @RequestBody ExecuteToolRequest request) {
-        return runtime.execute(principal, request.toolName(), request.toolVersion(), request.arguments());
+        return runtime.execute(principal, request.toolName(), request.toolVersion(), request.arguments(), idempotencyKey);
     }
 
     public record AllowedToolsRequest(

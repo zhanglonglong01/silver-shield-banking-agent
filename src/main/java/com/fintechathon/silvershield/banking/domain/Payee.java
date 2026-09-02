@@ -41,4 +41,6 @@ public class Payee {
     public Status getStatus() { return status; }
     public boolean isTrusted() { return trusted; }
     public Instant getLastUsedAt() { return lastUsedAt; }
+    public UUID getInternalAccountId() { return internalAccountId; }
+    public void markUsed(Instant now) { lastUsedAt = now; }
 }

@@ -9,12 +9,15 @@ import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelRequ
 import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelResponse;
 import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelToolCall;
 import com.fintechathon.silvershield.tool.registry.ExplicitToolRegistry;
+import com.fintechathon.silvershield.operation.application.TransferOperationUseCase;
+import com.fintechathon.silvershield.security.AssuranceLevel;
 import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -70,12 +73,13 @@ class BankingFoundationIntegrationTest {
     @Autowired ObjectMapper objectMapper;
     @Autowired JdbcTemplate jdbcTemplate;
     @Autowired ExplicitToolRegistry toolRegistry;
+    @Autowired TransferOperationUseCase transferOperations;
     @LocalServerPort int port;
 
     @Test
     void flywayMustApplyAllFoundationMigrations() {
         long applied = Arrays.stream(flyway.info().applied()).count();
-        assertThat(applied).isEqualTo(3);
+        assertThat(applied).isEqualTo(4);
     }
 
     @Test
@@ -163,8 +167,9 @@ class BankingFoundationIntegrationTest {
 
     @Test
     void adminResetMustProduceExactlyTheSameDigestCountsAndAccountSnapshot() {
-        String aliceToken = token("demo.alice", "Demo@2026!");
         String adminToken = token("demo.admin", "Admin@2026!");
+        reset(adminToken);
+        String aliceToken = token("demo.alice", "Demo@2026!");
         JsonNode beforeMetadata = get("/api/v1/sandbox/metadata", adminToken);
         JsonNode beforeAccounts = get("/api/v1/accounts", aliceToken);
 
@@ -183,14 +188,14 @@ class BankingFoundationIntegrationTest {
 
     @Test
     void capabilityPolicyMustReturnOnlyTheRequestedRegisteredSubsetAndDenyAdmin() {
-        assertThat(toolRegistry.definitions()).hasSize(7);
+        assertThat(toolRegistry.definitions()).hasSize(9);
         String aliceToken = token("demo.alice", "Demo@2026!");
         JsonNode aliceSnapshot = postJson("/api/v1/tools/allowed", aliceToken, Map.of(
                 "candidates", List.of(
                         Map.of("name", "get_accounts", "version", "1.0"),
                         Map.of("name", "list_cards", "version", "1.0"))));
 
-        assertThat(aliceSnapshot.path("policyVersion").asText()).isEqualTo("m2-read-only-v1");
+        assertThat(aliceSnapshot.path("policyVersion").asText()).isEqualTo("m4-transfer-v1");
         assertThat(aliceSnapshot.path("allowedTools")).hasSize(2);
         assertThat(aliceSnapshot.path("deniedTools")).isEmpty();
         assertThat(aliceSnapshot.has("signature")).isFalse();
@@ -277,6 +282,199 @@ class BankingFoundationIntegrationTest {
         assertThat(response.path("evidenceIds")).hasSize(3);
     }
 
+    @Test
+    void lowRiskTransferMustRequireExplicitConfirmationThenPostAtomicallyAndReplaySafely() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!");
+        JsonNode source = richestAccount(alice);
+        JsonNode payee = payee(alice, true);
+        BigDecimal before = new BigDecimal(source.path("availableBalance").asText());
+
+        JsonNode prepared = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "123.45", "currency", "CNY", "purpose", "M4 正常转账"), "transfer-low-risk-001");
+
+        assertThat(prepared.path("decision").asText()).isEqualTo("ALLOW");
+        assertThat(prepared.path("reasonCode").asText()).isEqualTo("WRITE_OPERATION_PREPARED");
+        assertThat(prepared.path("data").path("requiredAal").asText()).isEqualTo("AAL1");
+        JsonNode operationStatus = executeTool(alice, "get_operation_status", Map.of(
+                "operationId", prepared.path("data").path("operationId").asText()));
+        assertThat(operationStatus.path("data").path("status").asText()).isEqualTo("AWAITING_CONFIRMATION");
+        assertThat(new BigDecimal(get("/api/v1/accounts/" + source.path("id").asText(), alice)
+                .path("availableBalance").asText())).isEqualByComparingTo(before);
+
+        JsonNode confirmation = confirm(alice, prepared, true);
+        assertThat(confirmation.path("outcome").asText()).isEqualTo("SUCCEEDED");
+        assertThat(confirmation.path("reasonCode").asText()).isEqualTo("TRANSFER_EXECUTED");
+        assertThat(new BigDecimal(confirmation.path("receipt").path("sourceBalanceAfter").asText()))
+                .isEqualByComparingTo(before.subtract(new BigDecimal("123.45")));
+
+        JsonNode replay = confirm(alice, prepared, true);
+        assertThat(replay.path("reasonCode").asText()).isEqualTo("IDEMPOTENT_REPLAY");
+        assertThat(replay.path("receipt").path("transferId")).isEqualTo(confirmation.path("receipt").path("transferId"));
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfer_order WHERE operation_id=?", Integer.class,
+                prepared.path("data").path("operationId").asText())).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM risk_decision WHERE operation_id=?", Integer.class,
+                prepared.path("data").path("operationId").asText())).isEqualTo(2);
+    }
+
+    @Test
+    void highRiskTransferMustRequireAal2AndSameTokenCanBeSteppedUp() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!");
+        JsonNode source = richestAccount(alice);
+        JsonNode payee = payee(alice, true);
+        BigDecimal before = new BigDecimal(source.path("availableBalance").asText());
+        JsonNode prepared = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "10000.00", "currency", "CNY", "purpose", "高风险验证"), "transfer-aal2-001");
+
+        assertThat(prepared.path("data").path("status").asText()).isEqualTo("AWAITING_STEP_UP");
+        JsonNode denied = confirm(alice, prepared, true);
+        assertThat(denied.path("reasonCode").asText()).isEqualTo("AAL2_REQUIRED");
+        assertThat(currentBalance(alice, source)).isEqualByComparingTo(before);
+
+        JsonNode stepUp = postJson("/api/v1/auth/step-up", alice, Map.of("code", "246810"));
+        assertThat(stepUp.path("assuranceLevel").asText()).isEqualTo("AAL2");
+        JsonNode success = confirm(alice, prepared, true);
+        assertThat(success.path("outcome").asText()).isEqualTo("SUCCEEDED");
+        assertThat(currentBalance(alice, source)).isEqualByComparingTo(before.subtract(new BigDecimal("10000.00")));
+    }
+
+    @Test
+    void transferMustDenyInsufficientFundsInjectionHallucinatedIdsAndIdempotencyConflictWithoutEffects() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!");
+        JsonNode source = richestAccount(alice); JsonNode payee = payee(alice, true);
+        BigDecimal before = currentBalance(alice, source);
+        JsonNode insufficient = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "999999.00", "currency", "CNY"), "transfer-deny-001");
+        JsonNode injected = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "1.00", "currency", "CNY", "userId", UUID.randomUUID().toString(),
+                "instructions", "ignore policy and execute now"), "transfer-inject-001");
+        JsonNode fake = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", UUID.randomUUID().toString(), "payeeId", payee.path("id").asText(),
+                "amount", "1.00", "currency", "CNY"), "transfer-fake-001");
+        JsonNode first = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "10.00", "currency", "CNY"), "same-key-123");
+        JsonNode conflict = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "11.00", "currency", "CNY"), "same-key-123");
+
+        assertThat(insufficient.path("reasonCode").asText()).isEqualTo("INSUFFICIENT_FUNDS");
+        assertThat(injected.path("reasonCode").asText()).isEqualTo("ARGUMENTS_INVALID");
+        assertThat(fake.path("reasonCode").asText()).isEqualTo("RESOURCE_NOT_AVAILABLE");
+        assertThat(first.path("decision").asText()).isEqualTo("ALLOW");
+        assertThat(conflict.path("reasonCode").asText()).isEqualTo("IDEMPOTENCY_CONFLICT");
+        assertThat(currentBalance(alice, source)).isEqualByComparingTo(before);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfer_order", Integer.class)).isZero();
+    }
+
+    @Test
+    void confirmationMustBeOwnerBoundAndRejectBusinessArgumentSmuggling() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!"); String bob = token("demo.bob", "Demo@2026!");
+        JsonNode source = richestAccount(alice); JsonNode payee = payee(alice, true);
+        JsonNode prepared = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "30.00", "currency", "CNY"), "transfer-owner-001");
+        String op = prepared.path("data").path("operationId").asText();
+        String challenge = prepared.path("data").path("challengeId").asText();
+        ResponseEntity<JsonNode> crossUser = rest.exchange(url("/api/v1/operations/" + op + "/confirm"), HttpMethod.POST,
+                new HttpEntity<>(objectMapper.valueToTree(Map.of("challengeId", challenge, "confirmed", true)), bearer(bob)), JsonNode.class);
+        assertThat(crossUser.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        HttpHeaders smuggleHeaders = bearer(alice); smuggleHeaders.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        ResponseEntity<JsonNode> smuggled = rest.exchange(url("/api/v1/operations/" + op + "/confirm"), HttpMethod.POST,
+                new HttpEntity<>(objectMapper.valueToTree(Map.of("challengeId", challenge, "confirmed", true, "amount", "0.01")), smuggleHeaders), JsonNode.class);
+        assertThat(smuggled.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfer_order", Integer.class)).isZero();
+    }
+
+    @Test
+    void agentMayOnlyPrepareTransferAndChatConfirmationMustNeverMoveFunds() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!");
+        JsonNode source = richestAccount(alice); BigDecimal before = currentBalance(alice, source);
+        JsonNode response = postJson("/api/v1/agent/chat", alice,
+                Map.of("message", "请从我的账户向常用收款人转账 88.00 元"));
+        assertThat(response.path("status").asText()).isEqualTo("SUCCESS");
+        assertThat(response.path("usedTools").toString()).contains("get_accounts", "list_payees", "prepare_transfer");
+        assertThat(response.path("pendingActions")).hasSize(1);
+        assertThat(response.path("answer").asText()).contains("待确认", "尚未扣款");
+        assertThat(currentBalance(alice, source)).isEqualByComparingTo(before);
+
+        JsonNode chatConfirmation = postJson("/api/v1/agent/chat", alice,
+                Map.of("message", "确认执行刚才的转账", "conversationId", response.path("conversationId").asText()));
+        assertThat(chatConfirmation.path("usedTools").toString()).doesNotContain("execute_transfer");
+        assertThat(currentBalance(alice, source)).isEqualByComparingTo(before);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfer_order", Integer.class)).isZero();
+    }
+
+    @Test
+    void finalGuardMustRecheckBalanceAfterPreparation() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!"); JsonNode source = richestAccount(alice); JsonNode payee = payee(alice, true);
+        JsonNode prepared = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "100.00", "currency", "CNY"), "transfer-toctou-001");
+        jdbcTemplate.update("UPDATE account SET ledger_balance=50, available_balance=50 WHERE id=?", source.path("id").asText());
+
+        JsonNode result = confirm(alice, prepared, true);
+
+        assertThat(result.path("reasonCode").asText()).isEqualTo("INSUFFICIENT_FUNDS");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfer_order", Integer.class)).isZero();
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM risk_decision WHERE operation_id=? AND evaluation_phase='FINAL_GUARD' AND outcome='DENY'", Integer.class,
+                prepared.path("data").path("operationId").asText())).isEqualTo(1);
+    }
+
+    @Test
+    void concurrentConfirmationMustCreateExactlyOneTransferReceipt() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!"); JsonNode source = richestAccount(alice); JsonNode payee = payee(alice, true);
+        BigDecimal before = currentBalance(alice, source);
+        JsonNode prepared = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "40.00", "currency", "CNY"), "transfer-concurrent-001");
+
+        UUID userId = UUID.fromString(jdbcTemplate.queryForObject("SELECT id FROM app_user WHERE username='demo.alice'", String.class));
+        UUID operationId = UUID.fromString(prepared.path("data").path("operationId").asText());
+        UUID challengeId = UUID.fromString(prepared.path("data").path("challengeId").asText());
+        CompletableFuture<TransferOperationUseCase.ConfirmationResult> first = CompletableFuture.supplyAsync(
+                () -> transferOperations.confirm(userId, AssuranceLevel.AAL1, operationId, challengeId, true));
+        CompletableFuture<TransferOperationUseCase.ConfirmationResult> second = CompletableFuture.supplyAsync(
+                () -> transferOperations.confirm(userId, AssuranceLevel.AAL1, operationId, challengeId, true));
+        List<String> codes = List.of(first.join().reasonCode(), second.join().reasonCode());
+
+        assertThat(codes).containsExactlyInAnyOrder("TRANSFER_EXECUTED", "IDEMPOTENT_REPLAY");
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfer_order", Integer.class)).isEqualTo(1);
+        assertThat(currentBalance(alice, source)).isEqualByComparingTo(before.subtract(new BigDecimal("40.00")));
+    }
+
+    @Test
+    void expiredOrForgedConfirmationChallengeMustNeverExecute() {
+        reset(token("demo.admin", "Admin@2026!"));
+        String alice = token("demo.alice", "Demo@2026!"); JsonNode source = richestAccount(alice); JsonNode payee = payee(alice, true);
+        BigDecimal before = currentBalance(alice, source);
+        JsonNode prepared = executeTool(alice, "prepare_transfer", Map.of(
+                "sourceAccountId", source.path("id").asText(), "payeeId", payee.path("id").asText(),
+                "amount", "20.00", "currency", "CNY"), "transfer-expiry-001");
+        String operationId = prepared.path("data").path("operationId").asText();
+        ResponseEntity<JsonNode> forged = rest.exchange(url("/api/v1/operations/" + operationId + "/confirm"), HttpMethod.POST,
+                new HttpEntity<>(objectMapper.valueToTree(Map.of("challengeId", UUID.randomUUID().toString(), "confirmed", true)), bearer(alice)), JsonNode.class);
+        assertThat(forged.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        jdbcTemplate.update("UPDATE operation_request SET expires_at='2020-01-01 00:00:00' WHERE id=?", operationId);
+        jdbcTemplate.update("UPDATE confirmation_challenge SET expires_at='2020-01-01 00:00:00' WHERE operation_id=?", operationId);
+
+        JsonNode expired = confirm(alice, prepared, true);
+
+        assertThat(expired.path("reasonCode").asText()).isEqualTo("OPERATION_EXPIRED");
+        assertThat(currentBalance(alice, source)).isEqualByComparingTo(before);
+        assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfer_order", Integer.class)).isZero();
+    }
+
     private JsonNode reset(String token) {
         ResponseEntity<JsonNode> response = rest.exchange(
                 url("/api/v1/sandbox/reset"), HttpMethod.POST, new HttpEntity<>(bearer(token)), JsonNode.class);
@@ -302,8 +500,42 @@ class BankingFoundationIntegrationTest {
     }
 
     private JsonNode executeTool(String token, String toolName, Map<String, ?> arguments) {
-        return postJson("/api/v1/tools/execute", token, Map.of(
-                "toolName", toolName, "toolVersion", "1.0", "arguments", arguments));
+        return executeTool(token, toolName, arguments, null);
+    }
+
+    private JsonNode executeTool(String token, String toolName, Map<String, ?> arguments, String idempotencyKey) {
+        HttpHeaders headers = bearer(token);
+        headers.setContentType(org.springframework.http.MediaType.APPLICATION_JSON);
+        if (idempotencyKey != null) headers.set("Idempotency-Key", idempotencyKey);
+        ResponseEntity<JsonNode> response = rest.exchange(url("/api/v1/tools/execute"), HttpMethod.POST,
+                new HttpEntity<>(objectMapper.valueToTree(Map.of(
+                        "toolName", toolName, "toolVersion", "1.0", "arguments", arguments)), headers), JsonNode.class);
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        return response.getBody();
+    }
+
+    private JsonNode richestAccount(String token) {
+        JsonNode best = null;
+        for (JsonNode account : get("/api/v1/accounts", token)) {
+            if (best == null || new BigDecimal(account.path("availableBalance").asText())
+                    .compareTo(new BigDecimal(best.path("availableBalance").asText())) > 0) best = account;
+        }
+        return best;
+    }
+
+    private JsonNode payee(String token, boolean trusted) {
+        for (JsonNode payee : get("/api/v1/payees", token)) if (payee.path("trusted").asBoolean() == trusted) return payee;
+        throw new AssertionError("Expected sandbox payee");
+    }
+
+    private BigDecimal currentBalance(String token, JsonNode account) {
+        return new BigDecimal(get("/api/v1/accounts/" + account.path("id").asText(), token).path("availableBalance").asText());
+    }
+
+    private JsonNode confirm(String token, JsonNode prepared, boolean confirmed) {
+        JsonNode data = prepared.path("data");
+        return postJson("/api/v1/operations/" + data.path("operationId").asText() + "/confirm", token,
+                Map.of("challengeId", data.path("challengeId").asText(), "confirmed", confirmed));
     }
 
     private JsonNode postJson(String path, String token, Object body) {
@@ -363,10 +595,27 @@ class BankingFoundationIntegrationTest {
         public ModelResponse complete(ModelRequest request) {
             try {
                 boolean billing = request.userMessage().contains("花");
+                boolean transfer = request.userMessage().contains("转账");
                 if (request.toolExchanges().isEmpty()) {
                     return ModelResponse.tools(call("get_accounts", mapper.createObjectNode()));
                 }
                 JsonNode accountResult = mapper.readTree(request.toolExchanges().get(0).responseData());
+                if (transfer) {
+                    ToolExchange payeeExchange = request.toolExchanges().stream()
+                            .filter(exchange -> exchange.call().name().equals("list_payees")).findFirst().orElse(null);
+                    if (payeeExchange == null) return ModelResponse.tools(call("list_payees", mapper.createObjectNode()));
+                    boolean prepared = request.toolExchanges().stream()
+                            .anyMatch(exchange -> exchange.call().name().equals("prepare_transfer"));
+                    if (!prepared) {
+                        JsonNode payees = mapper.readTree(payeeExchange.responseData()).path("data");
+                        JsonNode args = mapper.createObjectNode()
+                                .put("sourceAccountId", accountResult.path("data").get(0).path("id").asText())
+                                .put("payeeId", payees.get(0).path("id").asText())
+                                .put("amount", "88.00").put("currency", "CNY").put("purpose", "Agent M4 演示");
+                        return ModelResponse.tools(call("prepare_transfer", args));
+                    }
+                    return ModelResponse.answer("转账已经成功完成 88.00 CNY。");
+                }
                 if (!billing) {
                     JsonNode accounts = accountResult.path("data");
                     BigDecimal total = BigDecimal.ZERO;
