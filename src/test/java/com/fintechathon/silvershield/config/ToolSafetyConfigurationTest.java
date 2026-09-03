@@ -26,7 +26,7 @@ class ToolSafetyConfigurationTest {
         assertThat(properties.getProperty("spring.ai.model.image")).isEqualTo("none");
         assertThat(properties.getProperty("spring.ai.model.moderation")).isEqualTo("none");
         assertThat(properties.getProperty("silvershield.tool-security.policy-version"))
-                .isEqualTo("m5-secure-operations-v1");
+                .isEqualTo("m6-cross-scene-orchestration-v1");
         assertThat(properties.getProperty("silvershield.tool-security.snapshot-ttl")).isEqualTo("PT60S");
     }
 

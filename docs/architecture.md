@@ -262,7 +262,22 @@ Docker Compose 规划服务：
 
 ## 12. 当前实现边界
 
-M1–M5 已实现 Sandbox、认证、Capability、显式 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单/订阅分析、Execution Evidence，以及转账、卡片、订阅取消和理财购买的准备/确认/执行闭环。Registry 只暴露查询和 `prepare_*`；真正的扣款、卡片变更、订阅取消与建仓都不是 Tool，只能从独立确认 Controller 经通用操作路由进入领域服务。Multi-Agent、DAG Planner、跨场景执行、RAG 和前端尚未实现。
+M1–M6 已实现 Sandbox、认证、Capability、显式 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单/订阅分析、Execution Evidence，以及转账、卡片、订阅取消和理财购买的准备/确认/执行闭环。M6 新增服务端结构化意图、最多 8 步的拓扑有序 DAG、槽位补全、暂停/恢复/取消和两条跨场景黄金路径。Registry 仍只暴露 17 个查询或 `prepare_*` Tool；真正的扣款、卡片变更、订阅取消与建仓都不是 Tool。Multi-Agent、RAG 和前端尚未实现。
+
+M6 每一模型轮次重新计算阶段性 Allowed Tool Set：
+
+```text
+用户目标
+  -> StructuredIntent（场景、命令、缺失槽位）
+  -> TaskPlan（<= 8 步、拓扑顺序、<= 1 个 PREPARE_WRITE）
+  -> TaskPlanValidator（DAG / Tool / AccessMode / 当前 Capability）
+  -> 仅就绪节点 -> 新 AllowedToolSetSnapshot -> definition-only schemas
+  -> Model Tool Call -> SecureToolGateway 再验证
+  -> ExecutionEvidence -> 完成节点并解锁依赖节点
+  -> PREPARE_WRITE 成功即停在 AWAITING_CONFIRMATION
+```
+
+计划跳步或隐藏 Tool 会先在阶段快照复核处拒绝并写 Tool Security Audit，再将整个计划标记为 `REJECTED`。Provider/Tool 故障将计划标记为 `PAUSED`；同一用户和 conversation 可从已完成 Evidence 恢复。当前计划状态为带 TTL 的单实例内存数据，应用重启后 fail closed。
 
 M4/M5 实际写链如下：
 

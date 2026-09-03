@@ -1,5 +1,6 @@
 package com.fintechathon.silvershield.agent.model;
 
+import com.fintechathon.silvershield.agent.planning.AgentTaskPlan;
 import java.util.List;
 import java.util.UUID;
 
@@ -10,7 +11,8 @@ public record AgentChatResult(
         List<String> usedTools,
         List<UUID> evidenceIds,
         String executionSummary,
-        List<PendingAction> pendingActions) {
+        List<PendingAction> pendingActions,
+        AgentTaskPlan taskPlan) {
 
     public AgentChatResult {
         usedTools = List.copyOf(usedTools);

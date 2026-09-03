@@ -66,6 +66,8 @@ class ArchitectureRulesTest {
                         "com.fintechathon.silvershield.operation.application.SecureTransferOperationService",
                         "com.fintechathon.silvershield.tool.handler.SecureManagedOperationTools$PrepareWealthPurchaseTool",
                         "com.fintechathon.silvershield.operation.application.SecureManagedOperationService",
-                        "com.fintechathon.silvershield.operation.application.SecureOperationCommandRouter");
+                        "com.fintechathon.silvershield.operation.application.SecureOperationCommandRouter",
+                        "com.fintechathon.silvershield.agent.planning.AgentOrchestrationService",
+                        "com.fintechathon.silvershield.agent.planning.TaskPlanValidator");
     }
 }

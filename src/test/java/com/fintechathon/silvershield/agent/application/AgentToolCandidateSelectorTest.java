@@ -33,4 +33,12 @@ class AgentToolCandidateSelectorTest {
         assertThat(selector.select("确认执行刚才的操作")).extracting(tool -> tool.name())
                 .containsExactly("get_operation_status");
     }
+
+    @Test
+    void crossSceneIntentMustUnionOnlyAtomicQueryAndPreparationTools() {
+        assertThat(selector.select("分析账单，然后取消订阅")).extracting(tool -> tool.name())
+                .contains("get_accounts", "list_transactions", "list_subscriptions",
+                        "analyze_subscription_costs", "prepare_subscription_cancellation")
+                .doesNotContain("execute_subscription_cancellation", "execute_transfer");
+    }
 }

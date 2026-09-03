@@ -208,6 +208,8 @@ M5 的 `V005__wealth_card_subscription_operations.sql` 已追加：
 
 所有 M5 最终变更继续复用 `operation_request`、`confirmation_challenge`、`risk_decision`、`idempotency_record` 与 `operation_audit`，在同一业务事务内提交。后续只做追加迁移，不回写既有 migration。迁移只负责结构和稳定参考数据；大批量 Mock 交易由版本化 `SandboxDatasetGenerator` + `SandboxDatasetStore` 生成，生成器有确定性测试，持久化后以 SHA-256 dataset digest 验证。
 
+M6 不新增业务表或 Flyway migration。TaskPlan、步骤状态和恢复 Evidence 是带 TTL、按用户与 conversation 绑定的可丢失编排状态；MySQL 仍是唯一业务事实源。编排状态丢失只会要求重新规划，不能跳过确认或改变已落库业务状态。
+
 ## 7. 可复现 Mock Banking Sandbox
 
 ### 数据集元数据

@@ -4,9 +4,9 @@
 
 本项目面向 2026 FinTechathon 深圳国际金融科技大赛国内赛道。目标是在完全模拟的银行沙箱中，让用户通过自然语言完成银行任务，同时对每一次允许、待确认和拒绝给出可验证、可审计的依据。
 
-当前状态：**M5——理财、卡片与订阅安全闭环已实现**。Agent 只能查询或创建待确认操作，不能直接改变余额、卡片或订阅；最终变更只能通过独立确认 API，经 AAL、最终风控、版本/行锁、幂等和审计后完成。Multi-Agent、跨场景 DAG、RAG 和前端仍未实现。
+当前状态：**M6——多轮安全任务 DAG 与跨场景联动已实现**。六类核心业务均已有后端闭环；跨场景计划最多 8 步，每一步只暴露依赖已满足的 Allowed Tool Set，写步骤最多一个且只能创建待确认操作。Multi-Agent、RAG 和前端仍未实现。
 
-## M1–M5 快速启动
+## M1–M6 快速启动
 
 前置条件：Docker Compose。所有账号、账户、卡片、流水、收款人和产品均为虚构数据。
 
@@ -127,6 +127,26 @@ M5 共增加 8 个显式 Tool：`get_card_controls`、`prepare_card_status_chang
 订阅月度等值成本由 Java 确定性计算：周付按 `金额 × 52 ÷ 12`、季付按 `金额 ÷ 3`、年付按 `金额 ÷ 12`；LLM 不参与金额运算。适当性检查虽归类为只读业务能力，但会持久化短期、不可复用换参的决策证据，不会扣款或建立持仓。
 
 默认 `SPRING_AI_CHAT_MODEL=none`，无 API Key 也能安全启动。需要使用 OpenAI-compatible Provider 时，在本机环境变量或未提交的 `.env` 中配置 `SPRING_AI_CHAT_MODEL=openai`、`OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `OPENAI_MODEL`；禁止把真实密钥写入仓库。
+
+### M6 跨场景编排演示
+
+M6 不增加万能 Tool，也不增加最终写执行器。`POST /api/v1/agent/chat` 的响应新增 `taskPlan`，展示 `planId`、计划状态、最多 8 个拓扑有序步骤、依赖、步骤状态、Evidence ID 和稳定原因码。
+
+两条可重复黄金路径：
+
+```json
+{"message":"分析本月账单，然后取消视频订阅"}
+```
+
+按 `get_accounts/list_transactions + list_subscriptions/analyze_subscription_costs → prepare_subscription_cancellation` 执行，最终停在 `AWAITING_CONFIRMATION`，订阅状态不变。
+
+```json
+{"message":"查看账户余额并购买适合我的理财产品"}
+```
+
+按 `get_accounts/get_account_balance + list_wealth_products/get_wealth_portfolio → check_wealth_suitability → prepare_wealth_purchase` 执行，最终停在 `AWAITING_CONFIRMATION`，余额与持仓不变。
+
+若目标不完整，返回 `NEEDS_INPUT`；在同一 `conversationId` 下补充场景即可继续建图。Provider/Tool 故障返回暂停状态，发送“继续执行”会从已审计 Evidence 恢复；发送“取消任务”只取消编排，不调用任何银行写操作。模型跳过依赖、添加隐藏 Tool、声明错误执行模式、构造超过 8 步或包含多个写步骤的计划均 fail closed。
 
 ### 本地测试
 
@@ -260,9 +280,10 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ### M6：Agent、多轮对话与跨场景编排
 
-- 实现结构化意图、最多 8 步的任务 DAG、槽位补全、会话状态和中断恢复。
-- 组合多个原子 Tool；查询步骤自动执行，写步骤必须绑定确认。
-- 实现模型不可用降级、计划非法拒绝、Tool 超时和部分失败恢复。
+- [x] 实现确定性结构化意图、最多 8 步的任务 DAG、槽位补全、会话状态和中断恢复。
+- [x] 组合多个原子 Tool；每轮只暴露就绪节点，查询步骤自动执行，写步骤必须绑定独立确认。
+- [x] 实现模型不可用降级、计划非法/越序/多写拒绝、Tool 超时和从 Evidence 恢复。
+- [x] 完成账单→订阅优化、余额→理财配置两条黄金路径与真实 Prompt Injection/幻觉回归。
 
 退出条件：至少两条跨场景黄金路径可重复演示，且失败时不产生半完成的隐式副作用。
 
@@ -312,6 +333,8 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 - M4 幂等准备使用数据库唯一约束并在单实例内串行化；当前 Compose 单实例已通过并发确认测试，多实例下的幂等键争用需在部署阶段加入数据库 advisory lock 或专用协调器。
 - M5 卡片/订阅/理财准备阶段沿用单实例同步 + 数据库唯一约束；最终确认使用悲观锁和资源版本复核。横向扩容前仍需增加跨实例幂等协调并进行死锁/重试压测。
 - M5 适当性结论使用固定演示风险等级和十分钟有效期，只用于虚构沙箱；不等同于真实金融机构的问卷、客户画像或合规审批。
+- M6 的计划、步骤状态和恢复 Evidence 当前与对话一样保存在单实例内存中并受 TTL 约束；重启会安全丢失，多实例部署前需迁移到 Redis/持久化计划存储并加入并发版本控制。
+- M6 为降低组合写风险，将单个计划限制为最多一个 `PREPARE_WRITE`；多写批次确认尚未实现，用户需拆分任务。
 - dev/test AAL2 是固定沙箱码，仅用于比赛演示；没有真实 OTP、设备绑定、尝试次数限流或认证事件审计，绝不能作为生产认证实现。
 
-M5 已完成并停止在本阶段，等待验收；未进入 M6 Multi-Agent、多轮任务 DAG 与跨场景编排阶段。
+M6 已完成并停止在本阶段，等待验收；未进入 M7 演示型前端阶段。

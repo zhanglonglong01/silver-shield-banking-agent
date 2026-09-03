@@ -78,7 +78,7 @@ silvershield:
     aal2-ttl: PT5M
     sandbox-aal2-code: ${SANDBOX_AAL2_CODE:}
   tool-security:
-    policy-version: m5-secure-operations-v1
+    policy-version: m6-cross-scene-orchestration-v1
     snapshot-ttl: PT60S
     max-arguments-bytes: 8192
   transfer-security:

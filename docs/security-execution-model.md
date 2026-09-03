@@ -218,6 +218,16 @@ DENY > REQUIRE_STEP_UP > REQUIRE_CONFIRMATION > ALLOW
 - UI 对模型文本做安全渲染，不执行 HTML/脚本，不把模型输出转换为 REST 动作。
 - 模型声称“已完成”但没有 `SUCCEEDED` operation receipt 时，替换为安全响应：“尚未执行，请查看操作状态”。
 
+### M6 已落地的跨场景执行边界
+
+- 结构化意图与 DAG 模板由服务端确定性生成；模型不能提交或修改计划结构。
+- `TaskPlanValidator` 强制最多 8 步、唯一步骤 ID、依赖存在且拓扑有序、Tool 属于当前 Capability 快照、声明模式与 Registry 摘要一致。
+- 单计划最多一个 `PREPARE_WRITE`；多个写目标返回 `PLAN_WRITE_SCOPE_TOO_BROAD`，要求拆分任务。
+- 每一模型轮次只暴露当前依赖已满足的节点，并重新签发 Allowed Tool Set；执行端仍由 Gateway 再次验证 `(toolName, version)`。
+- 模型越序、调用隐藏最终执行器或伪造 Tool 时，Gateway 产生拒绝审计，计划进入 `REJECTED`，后续节点不执行。
+- 查询失败、Provider/Tool 超时或异常会让计划进入 `PAUSED`；已完成查询 Evidence 可在同一用户会话中恢复，未确认写步骤没有业务副作用。
+- `PREPARE_WRITE` 成功后立即停止 Agent Loop 并返回 `pendingActions`，状态为 `AWAITING_CONFIRMATION`；对话中的“继续/确认”不能代替独立确认 API。
+
 ## 10. 幻觉防护
 
 - **ID 防幻觉**：账户/收款人/产品/卡片/订阅 ID 必须来自服务端锚点；伪造 UUID 在来源校验阶段拒绝。

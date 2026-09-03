@@ -1,6 +1,6 @@
 # 项目目录与模块边界
 
-## 1. M1–M5 实际目录
+## 1. M1–M6 实际目录
 
 ```text
 AI_Banking_Agent/
@@ -31,6 +31,7 @@ AI_Banking_Agent/
 │  │  ├─ conversation/            # 用户绑定、TTL、长度受限的 M3 会话
 │  │  ├─ evidence/                # ExecutionEvidence 与结果摘要
 │  │  ├─ model/                   # API 状态与返回契约
+│  │  ├─ planning/                # M6 结构化意图、DAG、校验、暂停/恢复
 │  │  └─ provider/                # 厂商无关端口 + Spring AI ChatModel 适配
 │  ├─ tool/
 │  │  ├─ api/                     # M2 capability/execute REST 演示入口
@@ -51,7 +52,7 @@ AI_Banking_Agent/
 └─ README.md
 ```
 
-M1 已建立工程、认证与 Sandbox；M2 加入 Capability、Registry、Gateway、只读 Handler 与持久化 Tool 审计；M3 加入 Spring AI Provider Adapter、自控 Agent Loop、确定性账单分析、Evidence 和 Grounding；M4 加入 AAL2 和安全转账闭环；M5 复用通用操作路由与独立确认入口，实现卡片、订阅和理财闭环。仍未实现 Multi-Agent、跨场景 DAG、RAG 或前端。
+M1 已建立工程、认证与 Sandbox；M2 加入 Capability、Registry、Gateway、只读 Handler 与持久化 Tool 审计；M3 加入 Spring AI Provider Adapter、自控 Agent Loop、确定性账单分析、Evidence 和 Grounding；M4 加入 AAL2 和安全转账闭环；M5 实现卡片、订阅和理财闭环；M6 在 `agent/planning` 中加入结构化意图、DAG 校验、阶段性 Allowed Tool Set、槽位补全和暂停恢复。仍未实现 Multi-Agent、RAG 或前端。
 
 ## 2. 后续目标目录（M2+）
 

@@ -174,6 +174,16 @@ M2 尚未接入 LLM。下列额外字段和恶意参数测试统一称为 **inje
 - 理财：R3 匹配购买、AAL1 拒绝后 step-up、订单/持仓/扣款原子性、适当性换参、递增金额、停售、余额不足、画像/检查过期、跨用户/伪造 ID、产品版本 TOCTOU 和确认重放。
 - Agent 攻击：真实用户消息包含 Prompt Injection，并诱使对抗 Fake Model 调用未注册最终执行器；Gateway 拒绝且卡片、订阅、余额与持仓不变。
 - Candidate Selector 测试确认每轮只暴露意图相关的查询/prepare Tool，单纯“确认执行”不会暴露任何最终写执行器。
+
+### M6 已落地的编排与恢复回归
+
+- 结构化意图覆盖账单+订阅、账户+理财、缺失第二场景、继续、取消和含管理员诱导的恶意文本。
+- DAG Validator 覆盖正常拓扑、自依赖/环、未来依赖、隐藏 Tool、AccessMode 走私、超过 8 步和多个写节点。
+- 黄金路径一自动完成账单与订阅成本查询，只生成取消订阅 pending action；黄金路径二完成余额、产品、持仓和适当性查询，只生成理财购买 pending action。
+- 每一轮断言仅有依赖已满足节点进入 Allowed Tool Set；模型越序调用 `prepare_*` 被 Gateway 拒绝并标记 `PLAN_REJECTED`。
+- 真实 Prompt Injection 驱动对抗 Fake Model 请求隐藏最终执行器，验证操作单、订阅历史、余额、订单和持仓均不变化。
+- 幻觉资源使当前节点进入 `PAUSED`；同一 conversation 发送“继续执行”复用已审计 Evidence，重试失败节点而不重复已完成查询。
+- 模糊联动目标返回 `NEEDS_INPUT` 且零 Tool 调用；补充槽位后创建新 DAG。取消命令为终态且零业务副作用。
 - 使用 PIT 等 mutation testing 针对金额比较、权限反转、决策优先级、确认过期和幂等条件，核心 mutation score 建议 ≥ 80%。
 - Flyway 从空库升级、重复启动、迁移校验和 Mock 数据摘要一致性通过。
 - Docker Compose smoke test：健康检查、登录、查询、待确认、成功、拒绝解释、重启后操作状态恢复。

@@ -32,20 +32,24 @@ public class AgentToolCandidateSelector {
         LinkedHashSet<ToolId> candidates = new LinkedHashSet<>();
         if (containsAny(normalized,"确认执行","确认转账","操作状态","转账状态","confirm transfer","operation status")) {
             candidates.add(GET_OPERATION_STATUS);
-        } else if (containsAny(normalized,"转账","汇款","打款","transfer","remit")) {
+            return Set.copyOf(candidates);
+        }
+        if (containsAny(normalized,"转账","汇款","打款","transfer","remit")) {
             candidates.add(GET_ACCOUNTS);
             candidates.add(GET_ACCOUNT_BALANCE);
             candidates.add(LIST_PAYEES);
             candidates.add(PREPARE_TRANSFER);
             candidates.add(GET_OPERATION_STATUS);
-        } else if (containsAny(normalized, "卡片", "银行卡", "冻结卡", "解冻", "挂失", "境外支付",
+        }
+        if (containsAny(normalized, "卡片", "银行卡", "冻结卡", "解冻", "挂失", "境外支付",
                 "线上支付", "卡限额", "card", "freeze card")) {
             candidates.add(LIST_CARDS);
             candidates.add(GET_CARD_CONTROLS);
             candidates.add(PREPARE_CARD_STATUS);
             candidates.add(PREPARE_CARD_CONTROLS);
             candidates.add(GET_OPERATION_STATUS);
-        } else if (containsAny(normalized, "理财", "产品", "持仓", "购买基金", "投资", "wealth", "portfolio")) {
+        }
+        if (containsAny(normalized, "理财", "产品", "持仓", "购买基金", "投资", "wealth", "portfolio")) {
             candidates.add(GET_ACCOUNTS);
             candidates.add(GET_ACCOUNT_BALANCE);
             candidates.add(LIST_WEALTH_PRODUCTS);
@@ -53,12 +57,14 @@ public class AgentToolCandidateSelector {
             candidates.add(CHECK_WEALTH_SUITABILITY);
             candidates.add(PREPARE_WEALTH_PURCHASE);
             candidates.add(GET_OPERATION_STATUS);
-        } else if (containsAny(normalized, "取消订阅", "取消代扣", "关闭自动扣款", "订阅成本", "会员费用")) {
+        }
+        if (containsAny(normalized, "取消订阅", "取消代扣", "关闭自动扣款", "订阅成本", "会员费用")) {
             candidates.add(LIST_SUBSCRIPTIONS);
             candidates.add(ANALYZE_SUBSCRIPTIONS);
             candidates.add(PREPARE_SUBSCRIPTION_CANCEL);
             candidates.add(GET_OPERATION_STATUS);
-        } else if (containsAny(normalized,
+        }
+        if (containsAny(normalized,
                 "账单", "消费", "支出", "收入", "流水", "异常", "商户", "订阅", "代扣", "花",
                 "spend", "bill", "transaction", "subscription", "expense", "income")) {
             candidates.add(GET_ACCOUNTS);
@@ -66,7 +72,8 @@ public class AgentToolCandidateSelector {
             candidates.add(LIST_TRANSACTIONS);
             candidates.add(LIST_SUBSCRIPTIONS);
             candidates.add(ANALYZE_SUBSCRIPTIONS);
-        } else if (containsAny(normalized,
+        }
+        if (containsAny(normalized,
                 "账户", "余额", "多少钱", "存款", "account", "balance")) {
             candidates.add(GET_ACCOUNTS);
             candidates.add(GET_ACCOUNT_BALANCE);

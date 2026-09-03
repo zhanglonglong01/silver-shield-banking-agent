@@ -12,6 +12,9 @@ import com.fintechathon.silvershield.agent.conversation.AgentConversationStore;
 import com.fintechathon.silvershield.agent.evidence.ExecutionEvidenceFactory;
 import com.fintechathon.silvershield.agent.evidence.InMemoryExecutionEvidenceStore;
 import com.fintechathon.silvershield.agent.model.AgentStatus;
+import com.fintechathon.silvershield.agent.planning.AgentIntentClassifier;
+import com.fintechathon.silvershield.agent.planning.AgentOrchestrationService;
+import com.fintechathon.silvershield.agent.planning.TaskPlanValidator;
 import com.fintechathon.silvershield.agent.provider.BankingModelClient;
 import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelRequest;
 import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelResponse;
@@ -384,6 +387,54 @@ class ReadOnlyBankingAgentTest {
     }
 
     @Test
+    void crossSceneProviderFailureMustPauseAndResumeFromCompletedEvidence() {
+        ScriptedModel model = scripted(
+                request -> tools(call("get_accounts", "1.0", "{}")),
+                request -> { throw new ModelProviderException("temporary outage"); },
+                request -> tools(
+                        call("get_account_balance", "1.0", "{\"accountId\":\"" + ACCOUNT_ONE + "\"}"),
+                        transactionCall("2026-08-01", "2026-08-31")));
+        Fixture fixture = fixture(model);
+
+        var first = fixture.agent.chat(alice(), "查询账单，然后查看账户余额", null);
+        var resumed = fixture.agent.chat(alice(), "继续执行", first.conversationId());
+
+        assertThat(first.status()).isEqualTo(AgentStatus.PROVIDER_UNAVAILABLE);
+        assertThat(first.taskPlan().status()).isEqualTo(
+                com.fintechathon.silvershield.agent.planning.AgentTaskPlan.PlanStatus.PAUSED);
+        assertThat(resumed.status()).isEqualTo(AgentStatus.SUCCESS);
+        assertThat(resumed.taskPlan().planId()).isEqualTo(first.taskPlan().planId());
+        assertThat(resumed.taskPlan().status()).isEqualTo(
+                com.fintechathon.silvershield.agent.planning.AgentTaskPlan.PlanStatus.COMPLETED);
+        assertThat(resumed.usedTools()).contains("get_accounts", "get_account_balance", "list_transactions");
+    }
+
+    @Test
+    void crossSceneToolTimeoutMustPauseWithoutGuessingLaterSteps() {
+        DemoBankingReadUseCase blocking = new DemoBankingReadUseCase() {
+            @Override public List<Account> accounts(UUID userId) {
+                try {
+                    Thread.sleep(500);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("interrupted", exception);
+                }
+                return super.accounts(userId);
+            }
+        };
+        Fixture fixture = fixture(
+                scripted(request -> tools(call("get_accounts", "1.0", "{}"))), blocking);
+        fixture.properties.setToolTimeout(Duration.ofMillis(25));
+
+        var result = fixture.agent.chat(alice(), "查询账单，然后查看账户余额", null);
+
+        assertThat(result.status()).isEqualTo(AgentStatus.TOOL_TIMEOUT);
+        assertThat(result.taskPlan().status()).isEqualTo(
+                com.fintechathon.silvershield.agent.planning.AgentTaskPlan.PlanStatus.PAUSED);
+        assertThat(result.usedTools()).isEmpty();
+    }
+
+    @Test
     void conversationIdMustBeBoundToAuthenticatedUser() {
         Fixture fixture = fixture(request -> ModelResponse.answer("你好，我可以进行只读银行查询。"));
         var first = fixture.agent.chat(alice(), "你好", null);
@@ -477,12 +528,15 @@ class ReadOnlyBankingAgentTest {
                     new InMemoryExecutionEvidenceStore(properties, clock);
             ExecutionEvidenceFactory evidenceFactory = new ExecutionEvidenceFactory(mapper, evidenceStore);
             AgentToolCandidateSelector selector = new AgentToolCandidateSelector();
+            AgentOrchestrationService orchestration = new AgentOrchestrationService(
+                    new AgentIntentClassifier(), properties, clock);
             SandboxProperties sandbox = new SandboxProperties();
             sandbox.setBaselineDate(LocalDate.of(2026, 8, 31));
             this.agent = new ReadOnlyBankingAgent(
                     model, policy, new SpringAiToolSchemaCatalog(registry), gateway, evidenceFactory,
                     new BillingAnalysisService(), new GroundedAnswerService(mapper, selector), selector,
-                    new AgentConversationStore(properties, clock), executor, mapper, properties, sandbox);
+                    new AgentConversationStore(properties, clock), orchestration, new TaskPlanValidator(),
+                    executor, mapper, properties, sandbox);
         }
 
         @Override public void close() { executor.shutdown(); }
