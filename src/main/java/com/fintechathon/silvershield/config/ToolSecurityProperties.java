@@ -6,7 +6,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "silvershield.tool-security")
 public class ToolSecurityProperties {
 
-    private String policyVersion = "m2-read-only-v1";
+    private String policyVersion = "m5-secure-operations-v1";
     private Duration snapshotTtl = Duration.ofSeconds(60);
     private int maxArgumentsBytes = 8192;
 

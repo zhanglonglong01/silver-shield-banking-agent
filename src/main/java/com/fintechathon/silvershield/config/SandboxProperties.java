@@ -7,7 +7,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class SandboxProperties {
 
     private boolean enabled;
-    private String datasetVersion = "fintechathon-demo-v1";
+    private String datasetVersion = "fintechathon-demo-v2";
     private long randomSeed = 2026L;
     private LocalDate baselineDate = LocalDate.of(2026, 8, 31);
     private String customerPasswordHash;

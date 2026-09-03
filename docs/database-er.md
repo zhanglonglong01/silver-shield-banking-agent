@@ -19,31 +19,32 @@ erDiagram
     ROLE ||--o{ USER_ROLE : assigned
     ROLE ||--o{ ROLE_PERMISSION : grants
     PERMISSION ||--o{ ROLE_PERMISSION : included
-    APP_USER ||--|| RISK_PROFILE : owns
+    APP_USER ||--|| CUSTOMER_RISK_PROFILE : owns
 
     APP_USER ||--o{ ACCOUNT : owns
-    APP_USER ||--o{ BENEFICIARY : maintains
+    APP_USER ||--o{ PAYEE : maintains
     APP_USER ||--o{ BANK_CARD : owns
     ACCOUNT ||--o{ BANK_CARD : links
     ACCOUNT ||--o{ ACCOUNT_TRANSACTION : contains
     ACCOUNT ||--o{ LEDGER_ENTRY : posts
-    ACCOUNT o|--o{ BENEFICIARY : maps_internal_target
+    ACCOUNT o|--o{ PAYEE : maps_internal_target
 
     ACCOUNT ||--o{ TRANSFER_ORDER : funds
-    BENEFICIARY ||--o{ TRANSFER_ORDER : receives
+    PAYEE ||--o{ TRANSFER_ORDER : receives
     TRANSFER_ORDER ||--o{ LEDGER_ENTRY : generates
     TRANSFER_ORDER ||--o{ ACCOUNT_TRANSACTION : appears_as
 
     APP_USER ||--o{ SUBSCRIPTION : owns
     ACCOUNT ||--o{ SUBSCRIPTION : charges
-    SUBSCRIPTION ||--o{ SUBSCRIPTION_ACTION : changes
+    SUBSCRIPTION ||--o{ SUBSCRIPTION_CHANGE_HISTORY : changes
 
-    INVESTMENT_PRODUCT ||--o{ INVESTMENT_ORDER : ordered
+    WEALTH_PRODUCT ||--o{ SUITABILITY_CHECK : evaluated
+    WEALTH_PRODUCT ||--o{ INVESTMENT_ORDER : ordered
     APP_USER ||--o{ INVESTMENT_ORDER : places
     ACCOUNT ||--o{ INVESTMENT_ORDER : pays
     INVESTMENT_ORDER ||--o{ LEDGER_ENTRY : generates
-    APP_USER ||--o{ INVESTMENT_HOLDING : holds
-    INVESTMENT_PRODUCT ||--o{ INVESTMENT_HOLDING : held_as
+    APP_USER ||--o{ WEALTH_HOLDING : holds
+    WEALTH_PRODUCT ||--o{ WEALTH_HOLDING : held_as
 
     BANK_CARD ||--o{ CARD_CHANGE_HISTORY : changes
 ```
@@ -84,7 +85,7 @@ erDiagram
 | `permission` | `id`, `code`, `name` | 细分 VIEW/TRANSFER/INVEST/CARD/SUBSCRIPTION/AUDIT |
 | `user_role` | `user_id`, `role_id` | 联合主键 |
 | `role_permission` | `role_id`, `permission_id` | 联合主键 |
-| `risk_profile` | `user_id`, `risk_level`, `score`, `questionnaire_version`, `assessed_at`, `expires_at`, `version` | 理财适当性事实；`R1` 至 `R5` |
+| `customer_risk_profile` | `id`, `user_id`, `risk_level`, `assessed_at`, `valid_until`, `source`, `version` | M5 理财适当性事实；每用户唯一，`R1` 至 `R5` |
 
 认证会话和 AAL2 短期证明优先保存在 Redis；必要的认证成功/失败事件进入审计，不在业务表保存明文 OTP。
 
@@ -112,24 +113,25 @@ erDiagram
 | 表 | 关键字段 | 约束/说明 |
 |---|---|---|
 | `bank_card` | `id`, `user_id`, `linked_account_id`, `card_token`, `card_masked`, `card_type`, `status`, `online_enabled`, `overseas_enabled`, `single_tx_limit`, `daily_limit`, `expiry_month`, `version` | 合法状态机：ACTIVE/FROZEN/LOST/CLOSED；不保存 CVV |
-| `card_change_history` | `id`, `card_id`, `operation_id`, `change_type`, `before_value_json`, `after_value_json`, `reason`, `changed_at` | `operation_id` 唯一；追加式状态/控制变更记录 |
+| `card_change_history` | `id`, `operation_id`, `user_id`, `card_id`, `change_type`, `before_state_json`, `after_state_json`, `reason_code`, `completed_at` | `operation_id` 唯一；追加式状态/控制变更记录 |
 
 ### 4.5 订阅与代扣
 
 | 表 | 关键字段 | 约束/说明 |
 |---|---|---|
 | `subscription` | `id`, `user_id`, `charge_account_id`, `merchant_name`, `service_name`, `amount`, `currency`, `billing_cycle`, `next_charge_date`, `status`, `detected_from`, `cancellation_effect`, `version` | 状态 ACTIVE/PAUSED/CANCELLED/EXPIRED |
-| `subscription_action` | `id`, `subscription_id`, `operation_id`, `action`, `before_status`, `after_status`, `effective_at`, `created_at` | `operation_id` 唯一，保存取消结果 |
+| `subscription_change_history` | `id`, `operation_id`, `user_id`, `subscription_id`, `action`, `before_status`, `after_status`, `reason_code`, `effective_at`, `completed_at` | `operation_id` 唯一，追加保存取消结果 |
 
-流水分析可以生成订阅候选，但只有用户确认后的 `subscription.cancel` 才能改变状态。
+流水分析可以生成订阅候选，但只有用户确认后的 `prepare_subscription_cancellation` 对应最终服务才能改变状态。
 
 ### 4.6 理财
 
 | 表 | 关键字段 | 约束/说明 |
 |---|---|---|
-| `investment_product` | `id`, `code`, `name`, `product_type`, `risk_level`, `currency`, `min_purchase`, `increment_amount`, `expected_yield_text`, `term_days`, `sale_status`, `valid_from`, `valid_to`, `version` | 收益只保存模拟说明，不承诺回报 |
-| `investment_order` | `id`, `operation_id`, `user_id`, `product_id`, `payment_account_id`, `amount`, `currency`, `risk_profile_snapshot`, `product_snapshot`, `status`, `created_at`, `confirmed_at`, `version` | `operation_id` 唯一；快照用于审计适当性 |
-| `investment_holding` | `id`, `user_id`, `product_id`, `units`, `cost_amount`, `currency`, `opened_at`, `updated_at`, `version` | `(user_id, product_id)` 可唯一，按产品规则更新 |
+| `wealth_product` | `id`, `product_code`, `product_name`, `product_type`, `risk_level`, `currency`, `minimum_amount`, `increment_amount`, `expected_yield_text`, `term_days`, `sale_status`, `version` | 收益只保存模拟说明，不承诺回报 |
+| `suitability_check` | `id`, `user_id`, `product_id`, `payment_account_id`, `amount`, `currency`, `user_risk_level`, `product_risk_level`, `product_version`, `account_version`, `status`, `reason_code`, `expires_at`, `created_at` | 绑定用户、资源、金额和版本的短期决策证据 |
+| `investment_order` | `id`, `operation_id`, `user_id`, `product_id`, `payment_account_id`, `suitability_check_id`, `amount`, `currency`, `status`, `balance_before`, `balance_after`, `completed_at`, `version` | `operation_id` 唯一；成功购买回执 |
+| `wealth_holding` | `id`, `user_id`, `product_id`, `invested_amount`, `currency`, `status`, `opened_at`, `updated_at`, `version` | `(user_id, product_id)` 唯一，重复购买累计投资额 |
 
 ### 4.7 对话与计划
 
@@ -198,24 +200,30 @@ M4 的 `V004__secure_transfer_operations.sql` 已落地以下表：
 
 确认成功在一个 MySQL 事务内更新账户、写入一至两条 `account_transaction`、生成 `transfer_order`、消费 challenge 并落审计。Redis 只保存短期 bearer/AAL2 会话，不作为余额或操作状态真相源。
 
-后续从 `V004` 起只做追加迁移，规划包含细化权限、ledger/transfer、Agent/Conversation、完整 Safe Execution、Audit/Outbox 和版本化规则，不回写既有 migration。迁移只负责结构和稳定参考数据。大批量 Mock 交易由版本化 `SandboxDatasetGenerator` + `SandboxDatasetStore` 生成，避免把随机运行逻辑放入迁移；生成器本身有确定性测试，持久化后以 SHA-256 dataset digest 验证。
+M5 的 `V005__wealth_card_subscription_operations.sql` 已追加：
+
+- `customer_risk_profile`、`suitability_check`：固定风险画像与绑定资源版本、金额、币种、有效期的适当性证据。
+- `investment_order`、`wealth_holding`：购买回执与本人持仓；操作 ID 和用户/产品组合分别唯一。
+- `card_change_history`、`subscription_change_history`：带 before/after、原因码和生效时间的追加式变更记录。
+
+所有 M5 最终变更继续复用 `operation_request`、`confirmation_challenge`、`risk_decision`、`idempotency_record` 与 `operation_audit`，在同一业务事务内提交。后续只做追加迁移，不回写既有 migration。迁移只负责结构和稳定参考数据；大批量 Mock 交易由版本化 `SandboxDatasetGenerator` + `SandboxDatasetStore` 生成，生成器有确定性测试，持久化后以 SHA-256 dataset digest 验证。
 
 ## 7. 可复现 Mock Banking Sandbox
 
 ### 数据集元数据
 
-- `datasetId`: `fintechathon-demo-v1`
+- `datasetId`: `fintechathon-demo-v2`
 - 随机种子：`2026`
 - 固定基准日：`2026-08-31`
 - 固定时钟：测试默认 `2026-09-01T02:00:00Z`
 - 生成方式：`SplittableRandom(2026)` + 固定 UUID namespace + 固定商户模板
-- 重置方式：仅 `demo` profile 的管理员端点/脚本；事务内校验目标数据集后重建，不允许在其他 profile 启用
+- 重置方式：仅 `dev/test` profile 的管理员端点/脚本；事务内校验目标数据集后重建，`prod` 不注册 reset endpoint
 
 ### 预置人物
 
 | 用户 | 用途 | 数据轮廓 |
 |---|---|---|
-| `demo.alice` | 主演示用户 | 2 个 CNY 账户、2 张卡、5 个收款人、6 个订阅、180 天流水、2 个持仓，风险 R3 |
+| `demo.alice` | 主演示用户 | 2 个 CNY 账户、2 张卡、5 个收款人、6 个订阅、180 天流水、初始空持仓，风险 R3 |
 | `demo.bob` | 越权隔离对照 | 1 个账户、1 张卡、独立收款人/流水/订阅，风险 R2 |
 | `demo.locked` | 认证拒绝 | 用户状态 LOCKED，无有效会话 |
 
@@ -233,7 +241,7 @@ M4 的 `V004__secure_transfer_operations.sql` 已落地以下表：
 
 ### 数据集验收哈希
 
-Loader 完成后计算不含密码哈希和运行时间的规范化摘要：用户数、各表行数、账户余额合计、交易金额分类合计和固定记录字段哈希。`GET /api/v1/demo/dataset` 返回数据集版本与摘要，自动化测试断言相同 seed 生成相同摘要。
+Loader 完成后计算不含密码哈希和运行时间的规范化摘要：用户、风险画像、账户、卡片、流水、收款人、订阅和产品的排序后持久化内容。`GET /api/v1/sandbox/metadata` 返回数据集版本、seed、基准日、摘要和行数，自动化测试断言连续 reset 后摘要与资源快照完全一致。
 
 ## 8. 数据保留与脱敏
 

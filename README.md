@@ -4,9 +4,9 @@
 
 本项目面向 2026 FinTechathon 深圳国际金融科技大赛国内赛道。目标是在完全模拟的银行沙箱中，让用户通过自然语言完成银行任务，同时对每一次允许、待确认和拒绝给出可验证、可审计的依据。
 
-当前状态：**M4——智能转账安全闭环已实现**。Agent 可创建待确认转账，但不能执行扣款；资金变化只能通过独立确认 API，经 AAL、最终风控、悲观锁、幂等和审计后完成。卡片/理财/订阅写操作、Multi-Agent、RAG 和前端仍未实现。
+当前状态：**M5——理财、卡片与订阅安全闭环已实现**。Agent 只能查询或创建待确认操作，不能直接改变余额、卡片或订阅；最终变更只能通过独立确认 API，经 AAL、最终风控、版本/行锁、幂等和审计后完成。Multi-Agent、跨场景 DAG、RAG 和前端仍未实现。
 
-## M1–M4 快速启动
+## M1–M5 快速启动
 
 前置条件：Docker Compose。所有账号、账户、卡片、流水、收款人和产品均为虚构数据。
 
@@ -55,8 +55,8 @@ Content-Type: application/json
 | `GET` | `/api/v1/sandbox/metadata` | dev/test 数据集版本、seed、摘要和行数 |
 | `POST` | `/api/v1/sandbox/reset` | 仅 dev/test + DEMO_ADMIN；确定性重置 |
 | `POST` | `/api/v1/tools/allowed` | 按当前 Principal、AAL 和候选集合生成短期 Allowed Tool Set |
-| `POST` | `/api/v1/tools/execute` | 通过 SecureToolGateway 执行只读或“仅准备写入”Tool；转账准备建议携带 `Idempotency-Key` |
-| `POST` | `/api/v1/agent/chat` | 银行 Agent；转账只返回 `pendingActions`，不会在对话中扣款 |
+| `POST` | `/api/v1/tools/execute` | 通过 SecureToolGateway 执行只读或“仅准备写入”Tool；所有准备操作建议携带 `Idempotency-Key` |
+| `POST` | `/api/v1/agent/chat` | 银行 Agent；写请求只返回 `pendingActions`，不会在对话中产生业务副作用 |
 | `GET` | `/api/v1/operations/{operationId}` | 查询本人操作单状态；他人操作统一 404 |
 | `POST` | `/api/v1/operations/{operationId}/confirm` | 独立确认，只接受 `challengeId` 与 `confirmed`，不接受金额等业务参数 |
 
@@ -68,6 +68,8 @@ dev/test 一键 reset：
 ```powershell
 .\scripts\reset-sandbox.ps1
 ```
+
+M5 固定数据集为 `fintechathon-demo-v2`，seed 为 `2026`，baseline date 为 `2026-08-31`；当前规范化持久化摘要为 `6c9b472735d704368ae57afe1abb536563b6bd6221404fad0c4f0c986fab65b3`。该摘要覆盖固定风险画像和基础银行资源，不包含运行时操作单；连续 reset 后摘要和本人资源快照必须完全一致。
 
 Agent 请求示例：
 
@@ -115,6 +117,14 @@ Content-Type: application/json
 ```
 
 确认接口不接受金额、收款人或来源账户；重复确认返回原始回执，不会重复扣款。聊天中输入“确认”也不会调用最终执行器。
+
+### M5 卡片、订阅与理财演示
+
+M5 共增加 8 个显式 Tool：`get_card_controls`、`prepare_card_status_change`、`prepare_card_controls_change`、`analyze_subscription_costs`、`prepare_subscription_cancellation`、`check_wealth_suitability`、`get_wealth_portfolio`、`prepare_wealth_purchase`。其中 4 个 `prepare_*` 只创建待确认操作；最终执行器不注册为 Tool。
+
+演示顺序：先通过已有 REST 查询取得本人资源 ID，再调用 `/api/v1/tools/execute`。卡片解冻、放宽控制和所有理财购买要求 AAL2；冻结、收紧控制和取消订阅为 AAL1，但仍要求独立确认。理财必须先获得与用户、产品、付款账户、金额和币种精确绑定且未过期的适当性检查 ID。所有确认仍使用上方相同的 `/api/v1/operations/{operationId}/confirm` 契约。
+
+订阅月度等值成本由 Java 确定性计算：周付按 `金额 × 52 ÷ 12`、季付按 `金额 ÷ 3`、年付按 `金额 ÷ 12`；LLM 不参与金额运算。适当性检查虽归类为只读业务能力，但会持久化短期、不可复用换参的决策证据，不会扣款或建立持仓。
 
 默认 `SPRING_AI_CHAT_MODEL=none`，无 API Key 也能安全启动。需要使用 OpenAI-compatible Provider 时，在本机环境变量或未提交的 `.env` 中配置 `SPRING_AI_CHAT_MODEL=openai`、`OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `OPENAI_MODEL`；禁止把真实密钥写入仓库。
 
@@ -240,9 +250,11 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ### M5：理财、卡片、订阅
 
-- 理财：产品查询、适当性、购买预览、确认、订单与持仓。
-- 卡片：查询、冻结/解冻、线上/境外开关、限额调整与状态机。
-- 订阅：周期扣款识别、列表、取消预览、确认和操作记录。
+- [x] 理财：产品查询、适当性、购买预览、AAL2 确认、订单与持仓。
+- [x] 卡片：查询、冻结/解冻、线上/境外开关、限额调整与合法状态机。
+- [x] 订阅：确定性周期成本、列表、取消预览、确认和变更历史。
+- [x] 所有写操作沿用 Gateway → Prepare → 独立确认 → FINAL_GUARD → 事务提交链；最终执行器不注册为 Tool。
+- [x] 覆盖正常、异常、越权、Prompt Injection、幻觉 ID、TOCTOU、幂等/重放和审计场景。
 
 退出条件：每个写用例具备正常、异常、越权、注入、幻觉、幂等和审计测试。
 
@@ -292,12 +304,14 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ## Known risks
 
-- 当前 Spring Boot 管理的 Flyway 版本在日志中声明已测试的 MySQL 上限为 8.1，而 Compose/Testcontainers 使用 MySQL 8.4。当前 4 个 migration、Compose 启动和完整测试均通过；按约束暂不改版本，后续评估升级 Flyway 或固定 MySQL。
+- 当前 Spring Boot 管理的 Flyway 版本在日志中声明已测试的 MySQL 上限为 8.1，而 Compose/Testcontainers 使用 MySQL 8.4。当前 5 个 migration、Compose 启动和完整测试均通过；按约束暂不改版本，后续评估升级 Flyway 或固定 MySQL。
 - M2 的 Allowed Tool Set 使用进程内随机 HMAC 密钥；应用重启会使尚未过期的旧快照失效。这是安全的 fail-closed 行为，未来多实例部署需改为受管共享密钥或服务端快照存储。
 - M3 的对话历史和 `ExecutionEvidence` 当前为进程内、按用户绑定且带 TTL 的存储；重启会丢失，多实例部署需迁移到 Redis/持久化 evidence store。
 - 默认环境没有真实 LLM API Key，完整 CI 使用确定性 Fake Model；真实 Provider 的网络、模型行为和费用需要通过独立 `real-llm` profile 验证。
 - Grounding Guard 当前验证执行状态、Evidence ID 和关键数字，并提供确定性回退；更强的字段级引用证明和持久化证据链留待后续阶段。
 - M4 幂等准备使用数据库唯一约束并在单实例内串行化；当前 Compose 单实例已通过并发确认测试，多实例下的幂等键争用需在部署阶段加入数据库 advisory lock 或专用协调器。
+- M5 卡片/订阅/理财准备阶段沿用单实例同步 + 数据库唯一约束；最终确认使用悲观锁和资源版本复核。横向扩容前仍需增加跨实例幂等协调并进行死锁/重试压测。
+- M5 适当性结论使用固定演示风险等级和十分钟有效期，只用于虚构沙箱；不等同于真实金融机构的问卷、客户画像或合规审批。
 - dev/test AAL2 是固定沙箱码，仅用于比赛演示；没有真实 OTP、设备绑定、尝试次数限流或认证事件审计，绝不能作为生产认证实现。
 
-M4 完成后停止，等待验收；未进入 M5 卡片、理财和订阅写操作阶段。
+M5 已完成并停止在本阶段，等待验收；未进入 M6 Multi-Agent、多轮任务 DAG 与跨场景编排阶段。

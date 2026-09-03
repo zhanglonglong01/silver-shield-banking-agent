@@ -36,6 +36,10 @@ public class DefaultCapabilityPolicy implements CapabilityPolicy {
             ToolCapability.SUBSCRIPTION_READ,
             ToolCapability.WEALTH_PRODUCT_READ,
             ToolCapability.TRANSFER_PREPARE,
+            ToolCapability.CARD_MANAGE,
+            ToolCapability.SUBSCRIPTION_MANAGE,
+            ToolCapability.WEALTH_SUITABILITY,
+            ToolCapability.WEALTH_PURCHASE,
             ToolCapability.OPERATION_READ);
 
     private final ExplicitToolRegistry registry;

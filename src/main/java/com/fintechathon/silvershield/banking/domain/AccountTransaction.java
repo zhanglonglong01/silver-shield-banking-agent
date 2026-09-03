@@ -35,8 +35,15 @@ public class AccountTransaction {
     public AccountTransaction(UUID id, UUID accountId, Instant bookingTime, Direction direction,
             BigDecimal amount, String currency, String merchantName, String description,
             String counterpartyMasked, BigDecimal balanceAfter) {
+        this(id, accountId, bookingTime, direction, amount, currency, "TRANSFER", merchantName,
+                description, counterpartyMasked, balanceAfter);
+    }
+
+    public AccountTransaction(UUID id, UUID accountId, Instant bookingTime, Direction direction,
+            BigDecimal amount, String currency, String categoryCode, String merchantName, String description,
+            String counterpartyMasked, BigDecimal balanceAfter) {
         this.id=id; this.accountId=accountId; this.bookingTime=bookingTime; this.direction=direction;
-        this.amount=amount; this.currency=currency; this.categoryCode="TRANSFER"; this.merchantName=merchantName;
+        this.amount=amount; this.currency=currency; this.categoryCode=categoryCode; this.merchantName=merchantName;
         this.description=description == null || description.isBlank() ? "模拟转账" : description;
         this.counterpartyMasked=counterpartyMasked; this.status=Status.POSTED;
         this.balanceAfter=balanceAfter;

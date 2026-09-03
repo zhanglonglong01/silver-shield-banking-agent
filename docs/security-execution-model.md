@@ -202,6 +202,16 @@ DENY > REQUIRE_STEP_UP > REQUIRE_CONFIRMATION > ALLOW
 - 成功、拒绝和重放分别返回稳定 reason code；并发确认由操作行悲观锁和 `operation_id` 唯一回执共同约束。
 - 显式配置 `spring.ai.tools.resolution.fallback.enabled=false`、`spring.ai.chat.client.tool-calling.enabled=false`，并在 Spring AI request options 设置 `internalToolExecutionEnabled=false`；当前已由应用控制 Tool Calling Loop。
 
+### M5 已落地的卡片、订阅与理财闭环
+
+- `prepare_card_status_change`、`prepare_card_controls_change`、`prepare_subscription_cancellation`、`prepare_wealth_purchase` 都是 `PREPARE_WRITE`，成功仅表示操作单与 challenge 已创建。
+- 最终变更统一由 `/api/v1/operations/{operationId}/confirm` 进入 `OperationCommandRouter`；Registry、Agent 候选集合和模型 Schema 中不存在最终执行器。
+- 卡片状态转换由固定状态机验证；解冻、启用支付能力或提高限额需要 AAL2，冻结/收紧仍需 AAL1 加明确确认。
+- 订阅成本按固定周期换算公式由 Java 计算；取消时复查 owner、状态与版本，并写入追加式变更历史。
+- 适当性证据精确绑定用户、风险等级、产品、账户、金额、币种和资源版本，十分钟过期；购买始终要求 AAL2，确认时再次复查产品状态、风险等级、余额和版本。
+- 成功写入与 `operation_request`、challenge、风险决策、业务回执/历史、`operation_audit` 在同一 MySQL 事务中完成；确认重放返回原回执，不重复产生业务效果。
+- 拒绝使用稳定原因码，例如 `AAL2_REQUIRED`、`CARD_TRANSITION_INVALID`、`RESOURCE_VERSION_CHANGED`、`SUBSCRIPTION_NOT_CANCELLABLE`、`SUITABILITY_BINDING_MISMATCH`、`RISK_PROFILE_EXPIRED`、`PRODUCT_NOT_ON_SALE` 和 `INSUFFICIENT_FUNDS`。
+
 ### 输出隔离
 
 - Grounding Guard 检查成功 Tool Evidence、关键数字和写操作回执；不一致时丢弃模型答案并使用确定性摘要或安全拒绝。

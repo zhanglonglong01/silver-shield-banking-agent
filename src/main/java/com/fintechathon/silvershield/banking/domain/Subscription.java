@@ -47,4 +47,10 @@ public class Subscription {
     public LocalDate getNextChargeDate() { return nextChargeDate; }
     public Status getStatus() { return status; }
     public String getCancellationEffect() { return cancellationEffect; }
+    public long getVersion() { return version; }
+
+    public void cancel() {
+        status = Status.CANCELLED;
+        nextChargeDate = null;
+    }
 }

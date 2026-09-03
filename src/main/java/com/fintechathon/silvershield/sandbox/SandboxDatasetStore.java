@@ -19,11 +19,16 @@ public class SandboxDatasetStore {
     public void clear() {
         jdbcTemplate.update("DELETE FROM sandbox_dataset_metadata");
         jdbcTemplate.update("DELETE FROM operation_audit");
+        jdbcTemplate.update("DELETE FROM investment_order");
+        jdbcTemplate.update("DELETE FROM card_change_history");
+        jdbcTemplate.update("DELETE FROM subscription_change_history");
         jdbcTemplate.update("DELETE FROM transfer_order");
         jdbcTemplate.update("DELETE FROM idempotency_record");
         jdbcTemplate.update("DELETE FROM risk_decision");
         jdbcTemplate.update("DELETE FROM confirmation_challenge");
         jdbcTemplate.update("DELETE FROM operation_request");
+        jdbcTemplate.update("DELETE FROM suitability_check");
+        jdbcTemplate.update("DELETE FROM wealth_holding");
         jdbcTemplate.update("DELETE FROM tool_security_audit");
         jdbcTemplate.update("DELETE FROM account_transaction");
         jdbcTemplate.update("DELETE FROM subscription");
@@ -31,6 +36,7 @@ public class SandboxDatasetStore {
         jdbcTemplate.update("DELETE FROM bank_card");
         jdbcTemplate.update("DELETE FROM wealth_product");
         jdbcTemplate.update("DELETE FROM account");
+        jdbcTemplate.update("DELETE FROM customer_risk_profile");
         jdbcTemplate.update("DELETE FROM app_user");
     }
 
@@ -52,6 +58,15 @@ public class SandboxDatasetStore {
                     """, row.id().toString(), row.userId().toString(), row.accountToken(), row.accountMasked(),
                     row.alias(), row.accountType(), row.currency(), row.ledgerBalance(), row.availableBalance(),
                     row.status(), row.dailyTransferLimit(), Timestamp.from(row.createdAt()));
+        }
+        for (SandboxDataset.RiskProfileSeed row : dataset.riskProfiles()) {
+            jdbcTemplate.update("""
+                    INSERT INTO customer_risk_profile
+                    (id, user_id, risk_level, assessed_at, valid_until, source, created_at, version)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+                    """, row.id().toString(), row.userId().toString(), row.riskLevel(),
+                    Date.valueOf(row.assessedAt()), Date.valueOf(row.validUntil()), row.source(),
+                    Timestamp.from(row.createdAt()));
         }
         for (SandboxDataset.CardSeed row : dataset.cards()) {
             jdbcTemplate.update("""

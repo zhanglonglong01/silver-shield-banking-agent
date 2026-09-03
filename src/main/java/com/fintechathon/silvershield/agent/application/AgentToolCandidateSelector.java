@@ -16,6 +16,16 @@ public class AgentToolCandidateSelector {
     static final ToolId LIST_PAYEES = new ToolId("list_payees", "1.0");
     static final ToolId PREPARE_TRANSFER = new ToolId("prepare_transfer", "1.0");
     static final ToolId GET_OPERATION_STATUS = new ToolId("get_operation_status", "1.0");
+    static final ToolId LIST_CARDS = new ToolId("list_cards", "1.0");
+    static final ToolId GET_CARD_CONTROLS = new ToolId("get_card_controls", "1.0");
+    static final ToolId PREPARE_CARD_STATUS = new ToolId("prepare_card_status_change", "1.0");
+    static final ToolId PREPARE_CARD_CONTROLS = new ToolId("prepare_card_controls_change", "1.0");
+    static final ToolId ANALYZE_SUBSCRIPTIONS = new ToolId("analyze_subscription_costs", "1.0");
+    static final ToolId PREPARE_SUBSCRIPTION_CANCEL = new ToolId("prepare_subscription_cancellation", "1.0");
+    static final ToolId LIST_WEALTH_PRODUCTS = new ToolId("list_wealth_products", "1.0");
+    static final ToolId CHECK_WEALTH_SUITABILITY = new ToolId("check_wealth_suitability", "1.0");
+    static final ToolId GET_WEALTH_PORTFOLIO = new ToolId("get_wealth_portfolio", "1.0");
+    static final ToolId PREPARE_WEALTH_PURCHASE = new ToolId("prepare_wealth_purchase", "1.0");
 
     public Set<ToolId> select(String userMessage) {
         String normalized = userMessage.toLowerCase(Locale.ROOT);
@@ -28,6 +38,26 @@ public class AgentToolCandidateSelector {
             candidates.add(LIST_PAYEES);
             candidates.add(PREPARE_TRANSFER);
             candidates.add(GET_OPERATION_STATUS);
+        } else if (containsAny(normalized, "卡片", "银行卡", "冻结卡", "解冻", "挂失", "境外支付",
+                "线上支付", "卡限额", "card", "freeze card")) {
+            candidates.add(LIST_CARDS);
+            candidates.add(GET_CARD_CONTROLS);
+            candidates.add(PREPARE_CARD_STATUS);
+            candidates.add(PREPARE_CARD_CONTROLS);
+            candidates.add(GET_OPERATION_STATUS);
+        } else if (containsAny(normalized, "理财", "产品", "持仓", "购买基金", "投资", "wealth", "portfolio")) {
+            candidates.add(GET_ACCOUNTS);
+            candidates.add(GET_ACCOUNT_BALANCE);
+            candidates.add(LIST_WEALTH_PRODUCTS);
+            candidates.add(GET_WEALTH_PORTFOLIO);
+            candidates.add(CHECK_WEALTH_SUITABILITY);
+            candidates.add(PREPARE_WEALTH_PURCHASE);
+            candidates.add(GET_OPERATION_STATUS);
+        } else if (containsAny(normalized, "取消订阅", "取消代扣", "关闭自动扣款", "订阅成本", "会员费用")) {
+            candidates.add(LIST_SUBSCRIPTIONS);
+            candidates.add(ANALYZE_SUBSCRIPTIONS);
+            candidates.add(PREPARE_SUBSCRIPTION_CANCEL);
+            candidates.add(GET_OPERATION_STATUS);
         } else if (containsAny(normalized,
                 "账单", "消费", "支出", "收入", "流水", "异常", "商户", "订阅", "代扣", "花",
                 "spend", "bill", "transaction", "subscription", "expense", "income")) {
@@ -35,6 +65,7 @@ public class AgentToolCandidateSelector {
             candidates.add(GET_ACCOUNT_BALANCE);
             candidates.add(LIST_TRANSACTIONS);
             candidates.add(LIST_SUBSCRIPTIONS);
+            candidates.add(ANALYZE_SUBSCRIPTIONS);
         } else if (containsAny(normalized,
                 "账户", "余额", "多少钱", "存款", "account", "balance")) {
             candidates.add(GET_ACCOUNTS);

@@ -12,6 +12,7 @@ public record SandboxDataset(
         LocalDate baselineDate,
         Instant generatedAt,
         List<UserSeed> users,
+        List<RiskProfileSeed> riskProfiles,
         List<AccountSeed> accounts,
         List<CardSeed> cards,
         List<TransactionSeed> transactions,
@@ -26,6 +27,15 @@ public record SandboxDataset(
             String displayName,
             String role,
             String status,
+            Instant createdAt) {}
+
+    public record RiskProfileSeed(
+            UUID id,
+            UUID userId,
+            String riskLevel,
+            LocalDate assessedAt,
+            LocalDate validUntil,
+            String source,
             Instant createdAt) {}
 
     public record AccountSeed(

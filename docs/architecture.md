@@ -262,17 +262,21 @@ Docker Compose 规划服务：
 
 ## 12. 当前实现边界
 
-M1–M4 已实现 Sandbox、认证、Capability、只读 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单分析、Execution Evidence，以及智能转账的准备/确认/执行闭环。M4 仅把 `prepare_transfer` 暴露为 `PREPARE_WRITE`；真正扣款不是 Tool，只能从独立确认 Controller 进入应用服务。卡片、理财、订阅写操作、Multi-Agent、DAG Planner、RAG 和前端尚未实现。
+M1–M5 已实现 Sandbox、认证、Capability、显式 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单/订阅分析、Execution Evidence，以及转账、卡片、订阅取消和理财购买的准备/确认/执行闭环。Registry 只暴露查询和 `prepare_*`；真正的扣款、卡片变更、订阅取消与建仓都不是 Tool，只能从独立确认 Controller 经通用操作路由进入领域服务。Multi-Agent、DAG Planner、跨场景执行、RAG 和前端尚未实现。
 
-M4 实际写链如下：
+M4/M5 实际写链如下：
 
 ```text
 Agent / Direct API
   -> CapabilityPolicy 本轮动态集合
   -> SecureToolGateway 再验证集合成员、Registry、定义摘要、严格参数
-  -> prepare_transfer（只创建 Operation + RiskDecision + Challenge）
+  -> prepare_transfer / prepare_card_* / prepare_subscription_* / prepare_wealth_*
+     （只创建 Operation + RiskDecision + Challenge）
   -> 用户独立 POST /operations/{id}/confirm
   -> owner/challenge/expiry/AAL/参数哈希/摘要哈希
-  -> 稳定顺序悲观锁账户 + FINAL_GUARD 重跑风险
-  -> Account + Transaction + TransferOrder + Audit 同事务提交
+  -> FINAL_GUARD 重跑 owner/AAL/哈希/状态/余额/资源版本与适当性
+  -> 按场景悲观锁资源
+  -> 业务资源 + 回执/历史 + Audit 同事务提交
 ```
+
+M5 卡片状态机只允许 `ACTIVE → FROZEN/LOST`、`FROZEN → ACTIVE/LOST`，`LOST/CLOSED` 为终态；控制放宽和解冻要求 AAL2。订阅仅允许取消本人 `ACTIVE/PAUSED` 记录。理财购买始终要求 AAL2，并绑定十分钟有效的适当性检查、产品版本和账户版本。

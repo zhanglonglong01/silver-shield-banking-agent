@@ -3,7 +3,7 @@ silvershield:
     sandbox-aal2-code: ${SANDBOX_AAL2_CODE:246810}
   sandbox:
     enabled: true
-    dataset-version: fintechathon-demo-v1
+    dataset-version: fintechathon-demo-v2
     random-seed: 2026
     baseline-date: 2026-08-31
     customer-password-hash: ${SANDBOX_CUSTOMER_PASSWORD_HASH:$2a$10$M5FwqEuCyAAsOSZHCN69.e8KDhjye3wC60un8rDDRUBwGBcADwtp2}

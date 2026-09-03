@@ -51,4 +51,5 @@ public class WealthProduct {
     public SaleStatus getSaleStatus() { return saleStatus; }
     public LocalDate getValidFrom() { return validFrom; }
     public LocalDate getValidTo() { return validTo; }
+    public long getVersion() { return version; }
 }

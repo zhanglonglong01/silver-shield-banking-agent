@@ -1,10 +1,7 @@
 package com.fintechathon.silvershield.operation.api;
 
-import com.fintechathon.silvershield.operation.application.TransferOperationUseCase;
-import com.fintechathon.silvershield.operation.application.TransferOperationUseCase.*;
+import com.fintechathon.silvershield.operation.application.OperationCommandRouter;
 import com.fintechathon.silvershield.security.BankingPrincipal;
-import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotNull;
 import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Set;
 import java.util.UUID;
@@ -14,14 +11,14 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 @RequestMapping("/api/v1/operations")
 public class TransferOperationController {
-    private final TransferOperationUseCase operations;
-    public TransferOperationController(TransferOperationUseCase operations){this.operations=operations;}
+    private final OperationCommandRouter operations;
+    public TransferOperationController(OperationCommandRouter operations){this.operations=operations;}
     @GetMapping("/{operationId}")
-    public OperationView get(@AuthenticationPrincipal BankingPrincipal principal,@PathVariable UUID operationId){
+    public Object get(@AuthenticationPrincipal BankingPrincipal principal,@PathVariable UUID operationId){
         return operations.get(principal.userId(),operationId);
     }
     @PostMapping("/{operationId}/confirm")
-    public ConfirmationResult confirm(@AuthenticationPrincipal BankingPrincipal principal,@PathVariable UUID operationId,
+    public Object confirm(@AuthenticationPrincipal BankingPrincipal principal,@PathVariable UUID operationId,
             @RequestBody JsonNode request){
         if(request==null||!request.isObject()||!fieldNames(request).equals(Set.of("challengeId","confirmed"))
                 ||!request.path("confirmed").isBoolean()) throw new IllegalArgumentException("Confirmation body is not exact");

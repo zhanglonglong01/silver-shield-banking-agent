@@ -17,7 +17,7 @@ class SandboxDatasetGeneratorTest {
         SandboxDataset second = generator(2026L).generate();
 
         assertThat(second).isEqualTo(first);
-        assertThat(first.datasetVersion()).isEqualTo("fintechathon-demo-v1");
+        assertThat(first.datasetVersion()).isEqualTo("fintechathon-demo-v2");
         assertThat(first.baselineDate()).isEqualTo(LocalDate.of(2026, 8, 31));
         assertThat(first.users()).hasSize(4);
         assertThat(first.accounts()).hasSize(3);
@@ -55,7 +55,7 @@ class SandboxDatasetGeneratorTest {
     private static SandboxDatasetGenerator generator(long seed) {
         SandboxProperties properties = new SandboxProperties();
         properties.setEnabled(true);
-        properties.setDatasetVersion("fintechathon-demo-v1");
+        properties.setDatasetVersion("fintechathon-demo-v2");
         properties.setRandomSeed(seed);
         properties.setBaselineDate(LocalDate.of(2026, 8, 31));
         properties.setCustomerPasswordHash(CUSTOMER_HASH);

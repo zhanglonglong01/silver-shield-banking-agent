@@ -46,4 +46,17 @@ public class BankCard {
     public BigDecimal getSingleTxLimit() { return singleTxLimit; }
     public BigDecimal getDailyLimit() { return dailyLimit; }
     public String getExpiryMonth() { return expiryMonth; }
+    public long getVersion() { return version; }
+
+    public void changeStatus(Status targetStatus) {
+        this.status = targetStatus;
+    }
+
+    public void updateControls(boolean onlineEnabled, boolean overseasEnabled,
+            BigDecimal singleTxLimit, BigDecimal dailyLimit) {
+        this.onlineEnabled = onlineEnabled;
+        this.overseasEnabled = overseasEnabled;
+        this.singleTxLimit = singleTxLimit;
+        this.dailyLimit = dailyLimit;
+    }
 }

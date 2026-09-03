@@ -52,7 +52,7 @@ public class AuthController {
     public AssuranceResponse assurance(@AuthenticationPrincipal BankingPrincipal principal) {
         boolean available = sessionService.stepUpAvailable() && principal.assuranceLevel() != AssuranceLevel.AAL2;
         return new AssuranceResponse(principal.assuranceLevel(), AssuranceLevel.AAL2, available,
-                available ? "高风险转账可通过 sandbox AAL2 验证临时升级会话" : "当前不可升级或已处于 AAL2");
+                available ? "高风险银行操作可通过 sandbox AAL2 验证临时升级会话" : "当前不可升级或已处于 AAL2");
     }
 
     @PostMapping("/step-up")

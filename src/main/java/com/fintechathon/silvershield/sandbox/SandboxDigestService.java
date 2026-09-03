@@ -19,7 +19,8 @@ import org.springframework.stereotype.Service;
 public class SandboxDigestService {
 
     private static final List<String> TABLES = List.of(
-            "app_user", "account", "bank_card", "account_transaction", "payee", "subscription", "wealth_product");
+            "app_user", "customer_risk_profile", "account", "bank_card", "account_transaction",
+            "payee", "subscription", "wealth_product");
 
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper canonicalMapper;

@@ -13,7 +13,7 @@
 
 ## 2. 统一返回信封
 
-### M2/M4 已实现的 Tool
+### M2–M5 已实现的 Tool
 
 | Tool | 参数 | Capability | 结果 |
 |---|---|---|---|
@@ -35,6 +35,21 @@ M4 新增两个显式注册项：
 | `get_operation_status@1.0` | `READ_ONLY` | `operationId` | 只读取当前用户自己的操作状态、确认入口和回执引用 |
 
 `prepare_transfer` 的 `Idempotency-Key` 来自受信任 HTTP/Agent 执行上下文，不在模型可填写的 Tool 参数中。最终转账执行器不是 Tool，不在 Registry 和模型 Schema 中。
+
+M5 新增 8 个显式注册项：
+
+| Tool ID | 模式 | Capability | 结果与边界 |
+|---|---|---|---|
+| `get_card_controls@1.0` | `READ_ONLY` | `CARD_READ` | 本人卡片控制与资源版本 |
+| `prepare_card_status_change@1.0` | `PREPARE_WRITE` | `CARD_MANAGE` | 冻结/解冻/挂失预览；解冻要求 AAL2 |
+| `prepare_card_controls_change@1.0` | `PREPARE_WRITE` | `CARD_MANAGE` | 线上/境外/限额 before-after；放宽要求 AAL2 |
+| `analyze_subscription_costs@1.0` | `READ_ONLY` | `SUBSCRIPTION_READ` | Java 确定性月度等值与年化成本 |
+| `prepare_subscription_cancellation@1.0` | `PREPARE_WRITE` | `SUBSCRIPTION_MANAGE` | 取消预览和预计生效时间 |
+| `check_wealth_suitability@1.0` | `READ_ONLY` | `WEALTH_SUITABILITY` | 持久化短期决策证据，不扣款、不建仓 |
+| `get_wealth_portfolio@1.0` | `READ_ONLY` | `WEALTH_PRODUCT_READ` | 本人持仓；初始 Sandbox 为空 |
+| `prepare_wealth_purchase@1.0` | `PREPARE_WRITE` | `WEALTH_PURCHASE` | 绑定适当性证据的购买预览；始终要求 AAL2 |
+
+所有 `prepare_*` 的最终执行器都不在 Registry，不会出现在模型 Tool Schema；HTTP/Agent 上下文提供的幂等键也不能由模型参数覆盖。
 
 ```json
 {
@@ -118,10 +133,10 @@ Capability Policy 的输出不是一个裸字符串列表，而是包含 `decisi
 
 | Tool | 主要输入 | 确定性输出 | 权限/确认 |
 |---|---|---|---|
-| `investment.list_products` v1.0 | `riskLevelMax?`, `termDaysMax?`, `amount?`, `saleStatus=ON_SALE`, `limit<=20` | 产品 ID、风险级别、期限、门槛、模拟收益说明 | `INVESTMENT_VIEW`；只返回沙箱产品 |
-| `investment.get_portfolio` v1.0 | `includeClosed=false` | 本人持仓、成本、产品风险、数据时间 | `INVESTMENT_VIEW` + 所有权 |
-| `investment.check_suitability` v1.0 | `productId`, `paymentAccountId`, `amount`, `currency` | 用户风险快照、产品快照、门槛/余额/适当性结论、检查 ID | `INVESTMENT_BUY`；本人账户；不改变状态 |
-| `investment.purchase` v1.0 | `suitabilityCheckId`, `productId`, `paymentAccountId`, `amount`, `currency` | 创建/返回购买操作单与确认卡 | `INVESTMENT_BUY`；始终 AAL2 + 确认 |
+| `list_wealth_products` v1.0 | `riskLevelMax?`, `currency?`, `saleStatus?`, `limit?` | 产品 ID、风险级别、期限、门槛、模拟收益说明 | `WEALTH_PRODUCT_READ`；只返回沙箱产品 |
+| `get_wealth_portfolio` v1.0 | `{}` | 本人持仓、成本、产品风险、数据时间 | `WEALTH_PRODUCT_READ` + 所有权 |
+| `check_wealth_suitability` v1.0 | `productId`, `paymentAccountId`, `amount`, `currency` | 用户/产品风险快照、门槛/余额结论、检查 ID 与有效期 | `WEALTH_SUITABILITY`；本人账户；只写决策证据 |
+| `prepare_wealth_purchase` v1.0 | `suitabilityCheckId`, `productId`, `paymentAccountId`, `amount`, `currency` | 创建/返回购买操作单与确认卡 | `WEALTH_PURCHASE`；始终 AAL2 + 确认 |
 
 风险等级不匹配、问卷过期、产品停售、未达到起购/递增金额或余额不足均由服务端拒绝。`expectedYieldText` 是模拟产品说明，不由 LLM 推导保本或承诺收益。
 
@@ -129,10 +144,10 @@ Capability Policy 的输出不是一个裸字符串列表，而是包含 `decisi
 
 | Tool | 主要输入 | 确定性输出 | 权限/确认 |
 |---|---|---|---|
-| `card.list_owned` v1.0 | `includeClosed=false` | 卡片 ID、掩码、类型、状态、关联账户掩码 | `CARD_VIEW` + 所有权 |
-| `card.get_controls` v1.0 | `cardId` | 线上/境外开关、单笔/日限额、版本 | `CARD_VIEW` + 所有权 |
-| `card.update_status` v1.0 | `cardId`, `targetStatus`, `reasonCode` | 创建状态变更操作单与影响摘要 | `CARD_MANAGE`；始终确认；解冻需要 AAL2 |
-| `card.update_controls` v1.0 | `cardId`, `onlineEnabled?`, `overseasEnabled?`, `singleTxLimit?`, `dailyLimit?` | 创建控制变更操作单，展示 before/after | `CARD_MANAGE`；始终确认；放宽控制需要 AAL2 |
+| `list_cards` v1.0 | `{}` | 卡片 ID、掩码、类型、状态、关联账户掩码 | `CARD_READ` + 所有权 |
+| `get_card_controls` v1.0 | `cardId` | 线上/境外开关、单笔/日限额、版本 | `CARD_READ` + 所有权 |
+| `prepare_card_status_change` v1.0 | `cardId`, `targetStatus`, `reasonCode` | 创建状态变更操作单与影响摘要 | `CARD_MANAGE`；始终确认；解冻需要 AAL2 |
+| `prepare_card_controls_change` v1.0 | `cardId`, `onlineEnabled`, `overseasEnabled`, `singleTxLimit`, `dailyLimit` | 创建控制变更操作单，展示 before/after | `CARD_MANAGE`；始终确认；放宽控制需要 AAL2 |
 
 `targetStatus` 只允许 `ACTIVE`、`FROZEN`、`LOST`；关闭卡片不在比赛自助 Tool 范围。至少有一个控制字段变化，限额为 CNY 十进制字符串，单笔不得高于日限额。重复设置同一状态返回原操作结果或 `NO_CHANGE`，不重复写历史。
 
@@ -140,9 +155,9 @@ Capability Policy 的输出不是一个裸字符串列表，而是包含 `decisi
 
 | Tool | 主要输入 | 确定性输出 | 权限/确认 |
 |---|---|---|---|
-| `subscription.list_owned` v1.0 | `status?`, `chargeBefore?`, `limit<=50` | 本人订阅、金额、周期、下次扣款、状态 | `SUBSCRIPTION_VIEW` + 所有权 |
-| `subscription.analyze_costs` v1.0 | `subscriptionIds?`, `horizonMonths(1..12)` | 月/年化成本、临近扣款、可取消项 | Java 计算；仅本人订阅 |
-| `subscription.cancel` v1.0 | `subscriptionId`, `reasonCode?` | 创建取消操作单，展示生效时间和影响 | `SUBSCRIPTION_MANAGE`；始终确认 |
+| `list_subscriptions` v1.0 | `{}` | 本人订阅、金额、周期、下次扣款、状态 | `SUBSCRIPTION_READ` + 所有权 |
+| `analyze_subscription_costs` v1.0 | `subscriptionIds?`, `horizonMonths(1..12)` | 月度等值、年化/区间总成本、各订阅明细 | `SUBSCRIPTION_READ`；Java 计算；仅本人订阅 |
+| `prepare_subscription_cancellation` v1.0 | `subscriptionId`, `reasonCode` | 创建取消操作单，展示生效时间和影响 | `SUBSCRIPTION_MANAGE`；始终确认 |
 
 只有 `ACTIVE/PAUSED` 的可取消订阅允许生成取消操作单；已取消返回幂等结果。检测到的周期流水若尚未成为已验证订阅，只能提示用户，不能直接调用取消。
 
@@ -150,7 +165,7 @@ Capability Policy 的输出不是一个裸字符串列表，而是包含 `decisi
 
 | Tool | 主要输入 | 确定性输出 | 权限/约束 |
 |---|---|---|---|
-| `operation.get_status` v1.0 | `operationId` | 本人操作状态、确认有效期、业务回执或安全错误 | 操作所有权；不泄露内部堆栈 |
+| `get_operation_status` v1.0 | `operationId` | 本人操作状态、确认有效期、业务回执或安全错误 | `OPERATION_READ`；不泄露内部堆栈 |
 | `audit.explain_decision` v1.0 | `operationId?`, `traceId?` 二选一 | 参数、权限、风险、确认、执行各阶段的决策凭证 | `AUDIT_VIEW_OWN`；仅本人、脱敏、安全原因码 |
 
 确认和取消不是模型 Tool。前端必须调用专用 REST 接口并提交服务端发出的 challenge；这样交易不会因模型误判一句“好的”或恶意文本中的“确认”而执行。
@@ -162,12 +177,12 @@ Capability Policy 的输出不是一个裸字符串列表，而是包含 `decisi
 ```mermaid
 flowchart LR
     A[bill.analyze_spending] --> B[bill.detect_recurring]
-    B --> C[subscription.list_owned]
-    C --> D[subscription.cancel]
-    A --> E[account.get_summary]
-    E --> F[investment.list_products]
-    F --> G[investment.check_suitability]
-    G --> H[investment.purchase]
+    B --> C[list_subscriptions]
+    C --> D[prepare_subscription_cancellation]
+    A --> E[get_account_balance]
+    E --> F[list_wealth_products]
+    F --> G[check_wealth_suitability]
+    G --> H[prepare_wealth_purchase]
 ```
 
 - 查询节点可以在依赖满足后自动运行。

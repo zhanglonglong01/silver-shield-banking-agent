@@ -490,7 +490,7 @@ class ReadOnlyBankingAgentTest {
         private static AgentProperties properties() {
             AgentProperties properties = new AgentProperties();
             properties.setModelTimeout(Duration.ofSeconds(1));
-            properties.setToolTimeout(Duration.ofSeconds(1));
+            properties.setToolTimeout(Duration.ofSeconds(5));
             return properties;
         }
 

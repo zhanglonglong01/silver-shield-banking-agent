@@ -36,8 +36,16 @@ public class OperationRequest {
     public OperationRequest(UUID id, UUID requestId, UUID conversationId, UUID userId,
             String canonicalArgsJson, String argsHash, String displaySummaryJson, String summaryHash,
             AssuranceLevel requiredAal, String idempotencyKeyHash, Instant now, Instant expiresAt) {
+        this(id, requestId, conversationId, userId, "prepare_transfer", "1.0", canonicalArgsJson, argsHash,
+                displaySummaryJson, summaryHash, requiredAal, idempotencyKeyHash, now, expiresAt);
+    }
+
+    public OperationRequest(UUID id, UUID requestId, UUID conversationId, UUID userId,
+            String toolName, String toolVersion, String canonicalArgsJson, String argsHash,
+            String displaySummaryJson, String summaryHash, AssuranceLevel requiredAal,
+            String idempotencyKeyHash, Instant now, Instant expiresAt) {
         this.id=id; this.requestId=requestId; this.conversationId=conversationId; this.userId=userId;
-        this.toolName="prepare_transfer"; this.toolVersion="1.0"; this.canonicalArgsJson=canonicalArgsJson;
+        this.toolName=toolName; this.toolVersion=toolVersion; this.canonicalArgsJson=canonicalArgsJson;
         this.argsHash=argsHash; this.displaySummaryJson=displaySummaryJson; this.summaryHash=summaryHash;
         this.requiredAal=requiredAal; this.idempotencyKeyHash=idempotencyKeyHash; this.createdAt=now;
         this.updatedAt=now; this.expiresAt=expiresAt;
@@ -45,6 +53,7 @@ public class OperationRequest {
     }
 
     public UUID getId(){return id;} public UUID getUserId(){return userId;} public UUID getConversationId(){return conversationId;}
+    public String getToolName(){return toolName;} public String getToolVersion(){return toolVersion;}
     public String getCanonicalArgsJson(){return canonicalArgsJson;} public String getArgsHash(){return argsHash;}
     public String getDisplaySummaryJson(){return displaySummaryJson;} public String getSummaryHash(){return summaryHash;}
     public AssuranceLevel getRequiredAal(){return requiredAal;} public Status getStatus(){return status;}
@@ -53,6 +62,7 @@ public class OperationRequest {
     public boolean terminal(){return status==Status.SUCCEEDED||status==Status.DENIED||status==Status.FAILED||status==Status.EXPIRED||status==Status.CANCELLED;}
     public void markExecuting(Instant now){status=Status.EXECUTING;updatedAt=now;}
     public void markSucceeded(UUID receiptId, Instant now){status=Status.SUCCEEDED;resultRefType="TRANSFER_ORDER";resultRefId=receiptId;updatedAt=now;}
+    public void markSucceeded(String resultType, UUID receiptId, Instant now){status=Status.SUCCEEDED;resultRefType=resultType;resultRefId=receiptId;updatedAt=now;}
     public void markDenied(String code, Instant now){status=Status.DENIED;failureCode=code;updatedAt=now;}
     public void markExpired(Instant now){status=Status.EXPIRED;failureCode="OPERATION_EXPIRED";updatedAt=now;}
     public void cancel(Instant now){status=Status.CANCELLED;failureCode="USER_CANCELLED";updatedAt=now;}

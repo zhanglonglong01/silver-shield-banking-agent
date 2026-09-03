@@ -2,6 +2,7 @@ package com.fintechathon.silvershield.tool.handler;
 
 import com.fintechathon.silvershield.operation.application.TransferOperationUseCase;
 import com.fintechathon.silvershield.operation.application.TransferOperationUseCase.*;
+import com.fintechathon.silvershield.operation.application.OperationCommandRouter;
 import com.fintechathon.silvershield.tool.gateway.ToolDeniedException;
 import com.fintechathon.silvershield.tool.model.*;
 import com.fintechathon.silvershield.tool.registry.ToolHandler;
@@ -38,11 +39,11 @@ public final class SecureTransferTools {
     }
 
     public static final class GetOperationStatusTool implements ToolHandler<OperationArguments> {
-        private final TransferOperationUseCase operations;
-        public GetOperationStatusTool(TransferOperationUseCase operations){this.operations=operations;}
+        private final OperationCommandRouter operations;
+        public GetOperationStatusTool(OperationCommandRouter operations){this.operations=operations;}
         @Override public ToolDefinition definition(){return new ToolDefinition(new ToolId("get_operation_status","1.0"),
-                "Read one authenticated customer's transfer operation status and receipt reference",
-                ToolCapability.OPERATION_READ,ToolAccessMode.READ_ONLY,"m4-v1",Set.of("operationId"),false);}
+                "Read one authenticated customer's operation status and receipt reference",
+                ToolCapability.OPERATION_READ,ToolAccessMode.READ_ONLY,"m5-v1",Set.of("operationId"),false);}
         @Override public Class<OperationArguments> argumentsType(){return OperationArguments.class;}
         @Override public ToolPayload execute(ToolExecutionContext context,OperationArguments args){return new ToolPayload(operations.get(context.userId(),args.operationId()),1);}
     }

@@ -20,7 +20,10 @@ public class IdempotencyRecord {
     @Version private long version;
     protected IdempotencyRecord() {}
     public IdempotencyRecord(UUID userId,String keyHash,String requestHash,UUID operationId,Instant now,Instant expiresAt){
-        this.id=UUID.randomUUID();this.userId=userId;this.scope="TRANSFER";this.idempotencyKeyHash=keyHash;
+        this(userId, "TRANSFER", keyHash, requestHash, operationId, now, expiresAt);
+    }
+    public IdempotencyRecord(UUID userId,String scope,String keyHash,String requestHash,UUID operationId,Instant now,Instant expiresAt){
+        this.id=UUID.randomUUID();this.userId=userId;this.scope=scope;this.idempotencyKeyHash=keyHash;
         this.requestHash=requestHash;this.operationId=operationId;this.status=Status.PENDING;this.createdAt=now;this.updatedAt=now;this.expiresAt=expiresAt;
     }
     public String getRequestHash(){return requestHash;} public UUID getOperationId(){return operationId;}

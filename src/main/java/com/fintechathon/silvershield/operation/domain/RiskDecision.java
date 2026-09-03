@@ -21,8 +21,12 @@ public class RiskDecision {
     protected RiskDecision() {}
     public RiskDecision(UUID operationId, UUID userId, Phase phase, Outcome outcome, String inputHash,
             String reasonCodesJson, String safeExplanation, Instant now){
+        this(operationId,userId,phase,outcome,"transfer-risk-v1",inputHash,reasonCodesJson,safeExplanation,now);
+    }
+    public RiskDecision(UUID operationId, UUID userId, Phase phase, Outcome outcome, String policyVersion,
+            String inputHash, String reasonCodesJson, String safeExplanation, Instant now){
         this.id=UUID.randomUUID();this.operationId=operationId;this.userId=userId;this.phase=phase;this.outcome=outcome;
-        this.policyVersion="transfer-risk-v1";this.inputHash=inputHash;this.reasonCodesJson=reasonCodesJson;
+        this.policyVersion=policyVersion;this.inputHash=inputHash;this.reasonCodesJson=reasonCodesJson;
         this.safeExplanation=safeExplanation;this.createdAt=now;
     }
 }

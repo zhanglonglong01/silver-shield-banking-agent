@@ -20,7 +20,7 @@ import org.springframework.util.StringUtils;
 @Profile({"dev", "test"})
 public class SandboxDatasetGenerator {
 
-    private static final String NAMESPACE = "silver-shield/fintechathon-demo-v1/";
+    private static final String NAMESPACE = "silver-shield/fintechathon-demo-v2/";
 
     private final SandboxProperties properties;
 
@@ -61,6 +61,11 @@ public class SandboxDatasetGenerator {
 
         List<SandboxDataset.AccountSeed> accounts = List.of(
                 aliceChecking.account(), aliceSavings.account(), bobChecking.account());
+        List<SandboxDataset.RiskProfileSeed> riskProfiles = List.of(
+                new SandboxDataset.RiskProfileSeed(id("risk/alice"), aliceId, "R3", baseline.minusMonths(2),
+                        baseline.plusMonths(10), "FIXED_SANDBOX", fixedTime),
+                new SandboxDataset.RiskProfileSeed(id("risk/bob"), bobId, "R2", baseline.minusMonths(1),
+                        baseline.plusMonths(11), "FIXED_SANDBOX", fixedTime));
         List<SandboxDataset.TransactionSeed> transactions = new ArrayList<>();
         transactions.addAll(aliceChecking.transactions());
         transactions.addAll(aliceSavings.transactions());
@@ -106,7 +111,7 @@ public class SandboxDatasetGenerator {
         List<SandboxDataset.WealthProductSeed> products = wealthProducts(baseline, fixedTime);
 
         return new SandboxDataset(properties.getDatasetVersion(), properties.getRandomSeed(), baseline, fixedTime,
-                users, accounts, cards, List.copyOf(transactions), payees, subscriptions, products);
+                users, riskProfiles, accounts, cards, List.copyOf(transactions), payees, subscriptions, products);
     }
 
     private GeneratedAccount generateChecking(

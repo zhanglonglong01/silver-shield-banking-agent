@@ -78,7 +78,7 @@ silvershield:
     aal2-ttl: PT5M
     sandbox-aal2-code: ${SANDBOX_AAL2_CODE:}
   tool-security:
-    policy-version: m4-transfer-v1
+    policy-version: m5-secure-operations-v1
     snapshot-ttl: PT60S
     max-arguments-bytes: 8192
   transfer-security:
@@ -88,6 +88,8 @@ silvershield:
     velocity-window: PT10M
     velocity-max-count: 3
     velocity-max-amount: 20000.00
+  wealth-security:
+    suitability-ttl: PT10M
   agent:
     max-tool-rounds: 5
     max-tool-calls-per-round: 4
@@ -101,6 +103,6 @@ silvershield:
     max-conversation-messages: 12
   sandbox:
     enabled: false
-    dataset-version: fintechathon-demo-v1
+    dataset-version: fintechathon-demo-v2
     random-seed: 2026
     baseline-date: 2026-08-31

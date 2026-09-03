@@ -63,6 +63,9 @@ class ArchitectureRulesTest {
                         "com.fintechathon.silvershield.tool.handler.ReadOnlyBankingTools$GetAccountsTool",
                         "com.fintechathon.silvershield.tool.handler.ReadOnlyBankingTools$ListWealthProductsTool",
                         "com.fintechathon.silvershield.tool.handler.SecureTransferTools$PrepareTransferTool",
-                        "com.fintechathon.silvershield.operation.application.SecureTransferOperationService");
+                        "com.fintechathon.silvershield.operation.application.SecureTransferOperationService",
+                        "com.fintechathon.silvershield.tool.handler.SecureManagedOperationTools$PrepareWealthPurchaseTool",
+                        "com.fintechathon.silvershield.operation.application.SecureManagedOperationService",
+                        "com.fintechathon.silvershield.operation.application.SecureOperationCommandRouter");
     }
 }
