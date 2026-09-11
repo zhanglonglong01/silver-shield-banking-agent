@@ -94,7 +94,30 @@ class SecureToolGatewayTest {
         assertThat(result.reasonCode()).isEqualTo("TOOL_NOT_IN_ALLOWED_SET");
         assertThat(balanceExecutions).hasValue(0);
         assertThat(audits).singleElement().satisfies(audit ->
-                assertThat(audit.decision()).isEqualTo(ToolDecision.DENY));
+                 assertThat(audit.decision()).isEqualTo(ToolDecision.DENY));
+    }
+
+    @Test
+    void malformedToolIdentifierMustBeSanitizedDeniedAndAuditedBeforeHandlerExecution() {
+        AllowedToolSetSnapshot snapshot = policy.issue(context, Set.of(ACCOUNTS));
+        String maliciousName = "<script>\r\nforge_audit" + "a".repeat(4096);
+        String maliciousVersion = "invalid-version-" + "9".repeat(128);
+
+        ToolGatewayResult result = gateway.execute(
+                context, snapshot, maliciousName, maliciousVersion, json("accountId", UUID.randomUUID()));
+
+        assertThat(result.decision()).isEqualTo(ToolDecision.DENY);
+        assertThat(result.reasonCode()).isEqualTo("MALFORMED_TOOL_ID");
+        assertThat(result.toolName()).hasSizeLessThanOrEqualTo(128)
+                .doesNotContain("\r", "\n", "<", ">");
+        assertThat(result.toolVersion()).hasSizeLessThanOrEqualTo(32);
+        assertThat(accountExecutions).hasValue(0);
+        assertThat(audits).singleElement().satisfies(audit -> {
+            assertThat(audit.decision()).isEqualTo(ToolDecision.DENY);
+            assertThat(audit.reasonCode()).isEqualTo("MALFORMED_TOOL_ID");
+            assertThat(audit.toolName()).isEqualTo(result.toolName());
+            assertThat(audit.toolVersion()).isEqualTo(result.toolVersion());
+        });
     }
 
     @Test

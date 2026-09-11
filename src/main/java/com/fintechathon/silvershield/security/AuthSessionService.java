@@ -8,11 +8,13 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.time.Clock;
-import java.time.Instant;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
 import java.util.Optional;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
@@ -25,17 +27,20 @@ public class AuthSessionService {
     private final ObjectMapper objectMapper;
     private final BankingSecurityProperties properties;
     private final Clock clock;
+    private final boolean productionProfileActive;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public AuthSessionService(
             StringRedisTemplate redisTemplate,
             ObjectMapper objectMapper,
             BankingSecurityProperties properties,
-            Clock clock) {
+            Clock clock,
+            Environment environment) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.properties = properties;
         this.clock = clock;
+        this.productionProfileActive = environment.acceptsProfiles(Profiles.of("prod"));
         if (properties.getAal2Ttl() == null || properties.getAal2Ttl().isZero()
                 || properties.getAal2Ttl().isNegative()) {
             throw new IllegalArgumentException("AAL2 TTL must be positive");
@@ -72,7 +77,9 @@ public class AuthSessionService {
                 return Optional.empty();
             }
             if (session.assuranceLevel() == AssuranceLevel.AAL2
-                    && (session.aal2ExpiresAt() == null || !session.aal2ExpiresAt().isAfter(Instant.now(clock)))) {
+                    && (productionProfileActive
+                    || session.aal2ExpiresAt() == null
+                    || !session.aal2ExpiresAt().isAfter(Instant.now(clock)))) {
                 AuthSession downgraded = new AuthSession(
                         session.userId(), session.username(), session.displayName(), session.role(),
                         AssuranceLevel.AAL1, session.issuedAt(), session.expiresAt(), null);
@@ -93,7 +100,9 @@ public class AuthSessionService {
     }
 
     public boolean stepUpAvailable() {
-        return properties.getSandboxAal2Code() != null && !properties.getSandboxAal2Code().isBlank();
+        return !productionProfileActive
+                && properties.getSandboxAal2Code() != null
+                && !properties.getSandboxAal2Code().isBlank();
     }
 
     public AuthSession stepUp(String token, String code) {

@@ -10,7 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
-@Profile({"dev", "test"})
+@Profile("!prod & (dev | test | offline-demo)")
 public class SandboxResetService {
 
     private final SandboxProperties properties;

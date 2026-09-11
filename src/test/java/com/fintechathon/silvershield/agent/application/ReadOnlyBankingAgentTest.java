@@ -235,6 +235,35 @@ class ReadOnlyBankingAgentTest {
                 Arguments.of("random_nonexistent_tool", "1.0"));
     }
 
+    @ParameterizedTest
+    @MethodSource("malformedToolNames")
+    void malformedToolNamesMustBeAuditedAndDeniedWithoutReachingAHandler(String maliciousName) {
+        Fixture fixture = fixture(request -> tools(call(maliciousName, "1.0", "{}")));
+
+        var result = fixture.agent.chat(alice(), "我有哪些账户？", null);
+
+        assertThat(result.status()).isEqualTo(AgentStatus.TOOL_DENIED);
+        assertThat(result.answer()).contains("格式非法", "已拒绝", "未执行");
+        assertThat(fixture.banking.lastUserId).isNull();
+        assertThat(fixture.audits).singleElement().satisfies(audit -> {
+            assertThat(audit.decision()).isEqualTo(ToolDecision.DENY);
+            assertThat(audit.reasonCode()).isEqualTo("MALFORMED_TOOL_ID");
+            assertThat(audit.toolName()).hasSizeLessThanOrEqualTo(128)
+                    .doesNotContain("\r", "\n", "<", ">");
+        });
+        assertThat(result.usedTools()).singleElement().satisfies(toolName ->
+                assertThat(toolName).hasSizeLessThanOrEqualTo(128)
+                        .doesNotContain("\r", "\n", "<", ">"));
+    }
+
+    static Stream<String> malformedToolNames() {
+        return Stream.of(
+                "GET_ACCOUNTS",
+                "get-accounts",
+                "<script>\r\nforge_audit",
+                "a".repeat(4096));
+    }
+
     @Test
     void modelMustNotAnswerBalanceWithoutSuccessfulToolEvidence() {
         Fixture fixture = fixture(request -> ModelResponse.answer("你的余额是 999999.00 CNY。"));

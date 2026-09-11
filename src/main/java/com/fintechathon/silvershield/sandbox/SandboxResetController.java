@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/api/v1/sandbox")
-@Profile({"dev", "test"})
+@Profile("!prod & (dev | test | offline-demo)")
 public class SandboxResetController {
 
     private final SandboxResetService resetService;

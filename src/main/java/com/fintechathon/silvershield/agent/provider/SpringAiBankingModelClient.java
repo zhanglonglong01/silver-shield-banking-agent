@@ -26,9 +26,11 @@ import org.springframework.ai.tool.ToolCallback;
 import org.springframework.ai.tool.definition.ToolDefinition;
 import org.springframework.ai.tool.metadata.ToolMetadata;
 import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 @Component
+@Profile("!offline-demo")
 public class SpringAiBankingModelClient implements BankingModelClient {
 
     private final ObjectProvider<ChatModel> chatModelProvider;

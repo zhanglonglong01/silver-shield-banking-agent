@@ -244,8 +244,6 @@ public class ReadOnlyBankingAgent {
                             AgentStatus.REPEATED_TOOL_CALL, executions, "阻止了重复的 Tool Call", planId);
                 }
                 totalToolCalls++;
-                ToolId requestedTool = new ToolId(call.name(), call.version());
-                boolean plannedAndReady = planId == null || orchestrationService.isReady(planId, requestedTool);
                 ToolGatewayResult gatewayResult;
                 try {
                     gatewayResult = taskExecutor.call(
@@ -267,7 +265,15 @@ public class ReadOnlyBankingAgent {
                 AgentToolExecution execution = new AgentToolExecution(call, gatewayResult, evidence);
                 executions.add(execution);
                 exchanges.add(new ToolExchange(round, call, toolResponse(execution)));
+                if ("MALFORMED_TOOL_ID".equals(gatewayResult.reasonCode())) {
+                    pausePlan(planId, "MALFORMED_TOOL_ID");
+                    return finish(principal, conversation.conversationId(), userMessage,
+                            "模型请求的 Tool 标识格式非法，安全网关已拒绝并记录审计；未执行任何银行业务 Tool。",
+                            AgentStatus.TOOL_DENIED, executions, gatewayResult.reasonCode(), planId);
+                }
                 if (planId != null) {
+                    ToolId requestedTool = new ToolId(call.name(), call.version());
+                    boolean plannedAndReady = orchestrationService.isReady(planId, requestedTool);
                     orchestrationService.record(planId, execution);
                     if (!plannedAndReady) {
                         return finish(principal, conversation.conversationId(), userMessage,
@@ -308,7 +314,7 @@ public class ReadOnlyBankingAgent {
             String executionSummary,
             UUID planId) {
         conversationStore.append(conversationId, principal.userId(), userMessage, answer);
-        List<String> usedTools = executions.stream().map(execution -> execution.call().name()).distinct().toList();
+        List<String> usedTools = executions.stream().map(execution -> execution.result().toolName()).distinct().toList();
         List<UUID> evidenceIds = executions.stream().map(execution -> execution.evidence().evidenceId()).toList();
         List<PendingAction> pending = executions.stream()
                 .filter(execution -> execution.call().name().startsWith("prepare_"))
@@ -358,7 +364,7 @@ public class ReadOnlyBankingAgent {
         executions.forEach(execution -> {
             ObjectNode item = evidence.addObject();
             item.put("evidenceId", execution.evidence().evidenceId().toString());
-            item.put("toolName", execution.call().name());
+            item.put("toolName", execution.result().toolName());
             item.put("decision", execution.result().decision().name());
             item.put("reasonCode", execution.result().reasonCode());
             item.set("data", execution.evidence().relevantStructuredResult());

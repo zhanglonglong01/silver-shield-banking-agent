@@ -21,7 +21,8 @@ async function mockBackend(page: Page) {
     if (path.includes('/operations/') && path.endsWith('/confirm')) return json(route, { operationId, status: body?.confirmed ? 'SUCCEEDED' : 'CANCELLED', receiptNo: 'MOCK-RECEIPT-001' })
     if (path.endsWith('/agent/chat')) {
       const message = String(body?.message ?? '')
-      const label = message.includes('并找出') || message.includes('一起') ? '跨场景联动'
+      const label = message.includes('并找出') || message.includes('一起')
+        || (message.includes('账单') && message.includes('取消')) ? '跨场景联动'
         : message.includes('转账') ? '智能转账'
         : message.includes('冻结') ? '卡片管理'
         : message.includes('取消') ? '订阅管理'

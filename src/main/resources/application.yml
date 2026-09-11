@@ -72,6 +72,19 @@ management:
     health:
       show-details: never
 
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    display-request-duration: true
+    try-it-out-enabled: false
+  packages-to-scan: com.fintechathon.silvershield
+
+logging:
+  pattern:
+    level: "%5p [trace:%X{traceId:-none}]"
+
 silvershield:
   security:
     session-ttl: PT2H

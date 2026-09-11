@@ -219,7 +219,7 @@ M6 不新增业务表或 Flyway migration。TaskPlan、步骤状态和恢复 Evi
 - 固定基准日：`2026-08-31`
 - 固定时钟：测试默认 `2026-09-01T02:00:00Z`
 - 生成方式：`SplittableRandom(2026)` + 固定 UUID namespace + 固定商户模板
-- 重置方式：仅 `dev/test` profile 的管理员端点/脚本；事务内校验目标数据集后重建，`prod` 不注册 reset endpoint
+- 重置方式：仅 `dev/test/offline-demo` profile 的管理员端点/脚本；事务内校验目标数据集后重建，`prod` 不注册 reset endpoint
 
 ### 预置人物
 

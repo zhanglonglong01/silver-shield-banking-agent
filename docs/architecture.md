@@ -10,7 +10,7 @@
 - 对 LLM、用户输入、历史对话、商户文本和 Tool 参数均按不可信输入处理。
 - 写操作在确认前零副作用；确认后以数据库事务和幂等键保证至多一次业务效果。
 - 每一个结论和决策都有证据 ID、策略版本、规则命中和 Trace ID。
-- 支持离线 Stub Model、可选本地模型和 OpenAI-compatible 模型，测试不依赖外部网络。
+- Compose 默认使用固定、确定性的离线 Provider；需要时可通过显式 profile 连接 OpenAI-compatible 模型，测试不依赖外部网络。
 - Tool 对模型“不可见”只属于纵深防御，不构成授权结论；执行端必须独立验证当前 Capability Policy。
 
 ## 2. 容器与依赖关系
@@ -18,10 +18,10 @@
 ```mermaid
 flowchart LR
     U[用户浏览器] -->|HTTPS / REST| FE[Vue 3 Web]
-    FE -->|JWT + Trace/Idempotency Key| API[Spring Boot API]
+    FE -->|Opaque Bearer + Trace/Idempotency Key| API[Spring Boot API]
     API --> AUTH[认证与会话]
     API --> AGENT[Agent Orchestrator]
-    AGENT --> MODEL[Spring AI ChatModel]
+    AGENT --> MODEL[BankingModelClient: Offline / Spring AI]
     AGENT --> PLAN[Plan Validator]
     PLAN --> TG[Secure Tool Gateway]
     TG --> VAL[参数校验]
@@ -138,7 +138,7 @@ M3 管理用户绑定的短期对话、Tool 交换和 evidence IDs。当前实�
 
 ## 5. Agent 运行模型
 
-M3 当前只实现单一只读 Agent，不生成写操作 TaskPlan。以下输入隔离和证据原则已落地；DAG Planner 内容属于后续里程碑。
+当前 Agent 支持六类场景、最多 8 步的确定性任务 DAG，以及查询自动执行、写操作只准备不提交的跨场景编排。以下输入隔离和证据原则均已落地。
 
 ### 5.1 输入阶段
 
@@ -237,15 +237,14 @@ Grounding Validator 执行以下规则：
 
 ## 10. 部署拓扑
 
-Docker Compose 规划服务：
+Docker Compose 已落地四个服务：
 
 - `web`：Nginx 托管 Vue 静态资源并反代 `/api`
 - `api`：Spring Boot 应用，非 root 用户运行
-- `mysql`：MySQL 8，持久卷，仅内网开放
-- `redis`：Redis，持久化非业务强依赖，仅内网开放
-- `model`（可选 profile）：本地模型服务；也可通过环境变量连接 OpenAI-compatible API
+- `mysql`：MySQL 8.4，持久卷，主机端口默认仅绑定 `127.0.0.1`
+- `redis`：Redis 7.4，持久化非业务强依赖，主机端口默认仅绑定 `127.0.0.1`
 
-密钥从环境变量或 Docker Secret 注入，不写入 Git。演示数据 profile 与任何未来生产 profile 隔离；应用启动时校验 `sandbox=true` 和数据集版本并在 UI 显著标识“模拟环境”。
+API 与 Web 主机端口也默认仅绑定 `127.0.0.1`。固定离线 Provider 在 API 进程内运行，不增加模型容器；OpenAI-compatible Provider 只能通过显式 profile 和环境变量启用。真实密钥不得写入 Git。`offline-demo` 与 `prod` 的 Sandbox/Profile 边界由代码和测试共同锁定，UI 显著标识“模拟环境”。
 
 ## 11. 架构强制规则
 
@@ -253,7 +252,7 @@ Docker Compose 规划服务：
 
 1. `agent..` 不得依赖 `..repository..`、JPA Entity 或领域写 Service。
 2. Tool 实现不得直接依赖 Repository，只能调用 `SecureToolGateway` 或只读 Query Port。
-3. 写 Application Service 仅能由已验证的 `AuthorizedOperationContext` 调用。
+3. 最终写 Application Service 只能由独立确认端点经 `OperationCommandRouter` 路由，并在场景服务完成 owner/challenge/AAL/哈希/资源版本的 FINAL_GUARD 后执行。
 4. Repository 不接受裸 `userId` 由模型传入；本人查询必须带服务端 Principal Scope。
 5. 所有写方法必须处于事务中，并在同一操作 ID 下生成审计结果。
 6. Tool 注册必须声明版本、风险级别、所需权限、参数 Schema 和是否确认。
@@ -262,7 +261,7 @@ Docker Compose 规划服务：
 
 ## 12. 当前实现边界
 
-M1–M6 已实现 Sandbox、认证、Capability、显式 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单/订阅分析、Execution Evidence，以及转账、卡片、订阅取消和理财购买的准备/确认/执行闭环。M6 新增服务端结构化意图、最多 8 步的拓扑有序 DAG、槽位补全、暂停/恢复/取消和两条跨场景黄金路径。Registry 仍只暴露 17 个查询或 `prepare_*` Tool；真正的扣款、卡片变更、订阅取消与建仓都不是 Tool。Multi-Agent、RAG 和前端尚未实现。
+M1–M8 已实现 Sandbox、opaque bearer 认证、Capability、显式 Tool/Gateway、Spring AI Provider Adapter、自控 Tool Loop、确定性账单/订阅分析、Execution Evidence，以及转账、卡片、订阅取消和理财购买的准备/确认/执行闭环。M6 提供服务端结构化意图、最多 8 步的拓扑有序 DAG、槽位补全、暂停/恢复/取消和两条跨场景黄金路径；M7 提供 Vue 3 演示前端；M8 提供固定离线 Provider、四容器部署、OpenAPI、验收/故障/备份脚本与比赛材料。Registry 仍只暴露 17 个查询或 `prepare_*` Tool；真正的扣款、卡片变更、订阅取消与建仓都不是 Tool。Multi-Agent 与 RAG 不属于当前比赛版本范围。
 
 M6 每一模型轮次重新计算阶段性 Allowed Tool Set：
 

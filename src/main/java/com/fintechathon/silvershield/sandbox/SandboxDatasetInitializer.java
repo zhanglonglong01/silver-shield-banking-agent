@@ -10,7 +10,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
 @Component
-@Profile({"dev", "test"})
+@Profile("!prod & (dev | test | offline-demo)")
 @Order(0)
 public class SandboxDatasetInitializer implements ApplicationRunner {
 

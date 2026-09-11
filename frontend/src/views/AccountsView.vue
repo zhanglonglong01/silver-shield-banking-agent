@@ -45,7 +45,7 @@ onMounted(load)
       <section class="data-card">
         <header><div><span class="section-kicker">FIXED BASELINE · 2026-08</span><h2>最近交易</h2></div><Landmark /></header>
         <div class="table-wrap"><table><thead><tr><th>时间 / 摘要</th><th>分类</th><th>状态</th><th>金额</th><th>余额</th></tr></thead>
-          <tbody><tr v-for="item in transactions" :key="item.id"><td><span class="tx-title"><component :is="item.direction === 'CREDIT' ? ArrowDownLeft : ArrowUpRight" :size="16" />{{ item.merchantName || item.description }}</span><small>{{ dateTime(item.bookingTime) }}</small></td><td>{{ item.categoryCode }}</td><td><span class="status-pill">{{ item.status }}</span></td><td :class="item.direction === 'CREDIT' ? 'positive' : 'negative'">{{ item.direction === 'CREDIT' ? '+' : '-' }}{{ money(item.amount) }}</td><td>{{ money(item.balanceAfter) }}</td></tr></tbody>
+          <tbody><tr v-for="item in transactions" :key="item.id"><td><span class="tx-title"><component :is="item.direction === 'IN' ? ArrowDownLeft : ArrowUpRight" :size="16" />{{ item.merchantName || item.description }}</span><small>{{ dateTime(item.bookingTime) }}</small></td><td>{{ item.categoryCode }}</td><td><span class="status-pill">{{ item.status }}</span></td><td :class="item.direction === 'IN' ? 'positive' : 'negative'">{{ item.direction === 'IN' ? '+' : '-' }}{{ money(item.amount) }}</td><td>{{ money(item.balanceAfter) }}</td></tr></tbody>
         </table></div>
       </section>
     </StatePanel>

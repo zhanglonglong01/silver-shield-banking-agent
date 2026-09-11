@@ -36,7 +36,7 @@ export interface Account {
 export interface Transaction {
   id: string
   bookingTime: string
-  direction: 'CREDIT' | 'DEBIT'
+  direction: 'IN' | 'OUT'
   amount: string
   currency: string
   categoryCode: string

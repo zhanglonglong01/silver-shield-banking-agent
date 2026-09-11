@@ -17,11 +17,11 @@ const explainOpen = ref(false)
 const chatEnd = ref<HTMLElement | null>(null)
 const scenarios = [
   { label: '智能转账', prompt: '从日常账户给张伟转账500元' },
-  { label: '账单分析', prompt: '分析我最近30天的账单、收支与大额交易' },
-  { label: '理财操作', prompt: '用日常账户购买1000元稳健型理财产品' },
-  { label: '卡片管理', prompt: '冻结我的尾号2038银行卡' },
+  { label: '账单分析', prompt: '分析尾号8899账户最近30天的账单、收支与大额交易' },
+  { label: '理财操作', prompt: '用日常账户购买银盾稳享存款理财产品1000元' },
+  { label: '卡片管理', prompt: '冻结我的尾号1001银行卡' },
   { label: '订阅管理', prompt: '取消我的星云视频订阅' },
-  { label: '跨场景联动', prompt: '分析最近30天账单并找出可以取消的订阅' }
+  { label: '跨场景联动', prompt: '分析尾号8899账户最近30天账单，然后取消视频订阅' }
 ]
 
 const webMcpLifecycle = new AbortController()

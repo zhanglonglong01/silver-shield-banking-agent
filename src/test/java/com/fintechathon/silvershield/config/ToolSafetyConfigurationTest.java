@@ -41,4 +41,15 @@ class ToolSafetyConfigurationTest {
         assertThat(properties.getProperty("spring.ai.model.chat")).isEqualTo("${SPRING_AI_CHAT_MODEL:none}");
         assertThat(properties.getProperty("spring.ai.openai.api-key")).isEqualTo("${OPENAI_API_KEY:}");
     }
+
+    @Test
+    void productionMustDisablePublicApiDocumentation() {
+        YamlPropertiesFactoryBean yaml = new YamlPropertiesFactoryBean();
+        yaml.setResources(new ClassPathResource("application-prod.yml"));
+        Properties properties = yaml.getObject();
+
+        assertThat(properties).isNotNull();
+        assertThat(properties.getProperty("springdoc.api-docs.enabled")).isEqualTo("false");
+        assertThat(properties.getProperty("springdoc.swagger-ui.enabled")).isEqualTo("false");
+    }
 }

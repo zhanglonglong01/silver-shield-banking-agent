@@ -1,6 +1,6 @@
 # 银盾智行 Web
 
-M7 演示型前端，采用 Vue 3、TypeScript、Vite、Pinia 与 Vue Router。前端是交互与展示层，不是银行操作的安全边界。
+M7 建立、M8 完成交付加固的演示型前端，采用 Vue 3、TypeScript、Vite、Pinia 与 Vue Router。前端是交互与展示层，不是银行操作的安全边界。
 
 ## 本地开发
 
@@ -29,7 +29,7 @@ npm run test:e2e
 npm run build
 ```
 
-Playwright 使用网络层固定响应验证六类前端演示路径，避免依赖公网模型或写入沙箱。真实 API 的登录、本人资源读取、注销撤销由根项目集成测试覆盖，并在 M7 验收中通过 Vite 代理联调。
+Playwright 使用网络层固定响应验证六类前端演示路径，避免依赖公网模型或写入沙箱。M8 根目录验收脚本额外覆盖 Compose 中真实 API 的登录、本人资源、越权隔离、离线 Agent、Sandbox reset、注销撤销和 OpenAPI；浏览器确认分支在比赛环境变更后仍应人工彩排。
 
 ## 安全边界
 
@@ -40,4 +40,4 @@ Playwright 使用网络层固定响应验证六类前端演示路径，避免依
 - WebMCP 只注册 `start_banking_agent_request`，最多发起查询或准备操作，不注册确认/提交工具；输入拒绝多余字段。
 - Nginx 配置 CSP、`nosniff`、拒绝 framing、禁用敏感 API 缓存，并同源反向代理后端。
 
-默认 `SPRING_AI_CHAT_MODEL=none` 时，页面会如实展示 `PROVIDER_UNAVAILABLE`，不会伪造成功。无公网模型的固定演示 Provider 属于 M8。
+Compose 默认激活 `offline-demo`，并保持 `SPRING_AI_CHAT_MODEL=none`；固定的 `OfflineDemoBankingModelClient` 不访问公网，但仍只提议本轮 Allowed Tool Set 中的调用，所有调用照常经过 `SecureToolGateway`。若直接使用 `dev` 且没有启用兼容模型，页面会如实展示 `PROVIDER_UNAVAILABLE`，不会伪造成功。

@@ -7,7 +7,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
 @Repository
-@Profile({"dev", "test"})
+@Profile("!prod & (dev | test | offline-demo)")
 public class SandboxDatasetStore {
 
     private final JdbcTemplate jdbcTemplate;

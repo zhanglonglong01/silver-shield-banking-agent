@@ -55,9 +55,8 @@ sequenceDiagram
     Agent->>Model: 固定策略 + 不可信数据区
     Model-->>Agent: Schema 约束 TaskPlan/Tool Call
     Agent->>Agent: DAG/白名单/参数来源校验
-    Agent->>Tool: 固定 Tool 名 + JSON args
-    Tool->>Gate: invoke(server context, args)
-    Gate->>Gate: 参数规范化与 Bean/语义校验
+    Agent->>Gate: Tool ID + JSON args + AllowedToolSetSnapshot + 服务端上下文
+    Gate->>Gate: 快照成员复核、Registry、参数规范化与 Bean/语义校验
     Gate->>Gate: RBAC + ABAC + AAL 检查
     Gate->>Risk: 版本化规则 + 服务端事实
     Risk-->>Gate: ALLOW/STEP_UP/CONFIRM/DENY + reasons
@@ -65,14 +64,14 @@ sequenceDiagram
     alt 拒绝
         Gate-->>UI: DENIED + 安全原因 + traceId
     else 需要确认
-        Gate->>Confirm: 创建绑定操作单/challenge
+        Gate->>Tool: 调用已验证的 prepare Handler
+        Tool->>Confirm: 创建绑定操作单/challenge
         Confirm-->>UI: 确认卡 + 影响 + 有效期
         User->>UI: 显式点击确认（必要时 AAL2）
         UI->>Confirm: 专用 REST + challenge
-        Confirm->>Gate: 单次消费并恢复操作单
-        Gate->>Gate: 最终所有权/状态/余额/版本复核
-        Gate->>Risk: FINAL_GUARD 复评
-        Gate->>Svc: AuthorizedOperationContext
+        Confirm->>Svc: 按本人 operation 路由并提交精确 challenge
+        Svc->>Svc: 单次消费、最终所有权/状态/余额/版本复核
+        Svc->>Risk: FINAL_GUARD 复评
         Svc->>DB: 原子业务事务 + operationId
         Svc->>Audit: 同事务成功证据
         DB-->>Svc: commit

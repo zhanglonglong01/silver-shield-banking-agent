@@ -15,7 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-@Profile({"dev", "test"})
+@Profile("!prod & (dev | test | offline-demo)")
 public class SandboxDigestService {
 
     private static final List<String> TABLES = List.of(

@@ -4,17 +4,19 @@
 
 本项目面向 2026 FinTechathon 深圳国际金融科技大赛国内赛道。目标是在完全模拟的银行沙箱中，让用户通过自然语言完成银行任务，同时对每一次允许、待确认和拒绝给出可验证、可审计的依据。
 
-当前状态：**M7——演示型 Vue 前端已实现**。六类核心业务已有后端安全闭环与浏览器入口；前端可展示多轮对话、任务计划、风险摘要、AAL2、独立确认、操作结果和允许/拒绝证据。Multi-Agent、RAG、无公网固定演示 Provider 与比赛交付物仍未实现。
+当前状态：**M8——比赛交付版已完成**。六类核心业务具备后端安全闭环、浏览器入口、无公网固定演示 Provider、OpenAPI、部署/验收脚本和答辩材料。Multi-Agent 与 RAG 不属于本版本范围，也不进入银行写操作授权链。
 
-## M1–M7 快速启动
+## M1–M8 快速启动
 
-前置条件：Docker Compose。所有账号、账户、卡片、流水、收款人和产品均为虚构数据。
+前置条件：Docker Compose；运行验收/运维脚本还需 PowerShell 7（`pwsh`）。所有账号、账户、卡片、流水、收款人和产品均为虚构数据。
 
 ```bash
 docker compose up --build
 ```
 
-Web 演示入口：`http://localhost:3000`；API：`http://localhost:8080`；健康检查：`GET /actuator/health`。如只进行前端开发，可按 [frontend/README.md](frontend/README.md) 使用 Vite。
+Web 演示入口：`http://localhost:3000`；API：`http://localhost:8080`；健康检查：`GET /actuator/health`；Swagger UI：`http://localhost:8080/swagger-ui.html`。默认 profile 为 `offline-demo`，不需要公网或模型 API Key。如只进行前端开发，可按 [frontend/README.md](frontend/README.md) 使用 Vite。
+
+Compose 默认把 MySQL、Redis、API 和 Web 全部绑定在 `127.0.0.1`。如需可信局域网演示，必须显式设置 `API_BIND_ADDRESS`、`WEB_BIND_ADDRESS`、更换演示凭据并限制防火墙来源；带固定凭据与 reset 能力的离线演示栈不得直接暴露公网。
 
 演示凭据：
 
@@ -22,7 +24,7 @@ Web 演示入口：`http://localhost:3000`；API：`http://localhost:8080`；健
 |---|---|---|
 | `demo.alice` | `Demo@2026!` | 主演示客户，2 个账户 |
 | `demo.bob` | `Demo@2026!` | 越权隔离对照客户，1 个账户 |
-| `demo.admin` | `Admin@2026!` | 仅 dev/test 可重置 Sandbox |
+| `demo.admin` | `Admin@2026!` | 仅 dev/test/offline-demo 可重置 Sandbox |
 | `demo.locked` | `Demo@2026!` | 锁定账号拒绝场景 |
 
 登录：
@@ -44,7 +46,7 @@ Content-Type: application/json
 | `POST` | `/api/v1/auth/logout` | 注销当前 token |
 | `GET` | `/api/v1/auth/me` | 当前用户与 AAL |
 | `GET` | `/api/v1/auth/assurance` | 查询当前认证强度与 AAL2 升级可用性 |
-| `POST` | `/api/v1/auth/step-up` | dev/test 模拟 AAL2 升级，默认演示码 `246810`，有效 5 分钟 |
+| `POST` | `/api/v1/auth/step-up` | dev/test/offline-demo 模拟 AAL2 升级，默认演示码 `246810`，有效 5 分钟 |
 | `GET` | `/api/v1/accounts` | 本人账户列表 |
 | `GET` | `/api/v1/accounts/{id}` | 本人账户；他人资源统一返回 404 |
 | `GET` | `/api/v1/accounts/{id}/transactions?from=2026-03-01&to=2026-08-31&limit=50` | 本人流水 |
@@ -52,8 +54,8 @@ Content-Type: application/json
 | `GET` | `/api/v1/payees` | 本人收款人 |
 | `GET` | `/api/v1/subscriptions` | 本人订阅 |
 | `GET` | `/api/v1/wealth-products` | 模拟理财产品 |
-| `GET` | `/api/v1/sandbox/metadata` | dev/test 数据集版本、seed、摘要和行数 |
-| `POST` | `/api/v1/sandbox/reset` | 仅 dev/test + DEMO_ADMIN；确定性重置 |
+| `GET` | `/api/v1/sandbox/metadata` | dev/test/offline-demo 数据集版本、seed、摘要和行数 |
+| `POST` | `/api/v1/sandbox/reset` | 仅 dev/test/offline-demo + DEMO_ADMIN；确定性重置 |
 | `POST` | `/api/v1/tools/allowed` | 按当前 Principal、AAL 和候选集合生成短期 Allowed Tool Set |
 | `POST` | `/api/v1/tools/execute` | 通过 SecureToolGateway 执行只读或“仅准备写入”Tool；所有准备操作建议携带 `Idempotency-Key` |
 | `POST` | `/api/v1/agent/chat` | 银行 Agent；写请求只返回 `pendingActions`，不会在对话中产生业务副作用 |
@@ -61,9 +63,9 @@ Content-Type: application/json
 | `POST` | `/api/v1/operations/{operationId}/confirm` | 独立确认，只接受 `challengeId` 与 `confirmed`，不接受金额等业务参数 |
 
 `prod` profile 不装配 Sandbox initializer、reset service 或 reset controller。
-`prod` 默认不配置模拟 AAL2 验证码，因此 step-up fail closed；演示码只用于 dev/test 虚构沙箱。
+`prod` 通过代码级 profile 边界禁用模拟 AAL2：即使与演示 profile 混合激活或错误加载固定码，step-up 仍 fail closed；从演示 Redis 遗留的 AAL2 会话在 prod 读取时自动降为 AAL1。演示码只用于 dev/test/offline-demo 虚构沙箱。
 
-dev/test 一键 reset：
+演示/测试一键 reset：
 
 ```powershell
 .\scripts\reset-sandbox.ps1
@@ -126,7 +128,7 @@ M5 共增加 8 个显式 Tool：`get_card_controls`、`prepare_card_status_chang
 
 订阅月度等值成本由 Java 确定性计算：周付按 `金额 × 52 ÷ 12`、季付按 `金额 ÷ 3`、年付按 `金额 ÷ 12`；LLM 不参与金额运算。适当性检查虽归类为只读业务能力，但会持久化短期、不可复用换参的决策证据，不会扣款或建立持仓。
 
-默认 `SPRING_AI_CHAT_MODEL=none`，无 API Key 也能安全启动。需要使用 OpenAI-compatible Provider 时，在本机环境变量或未提交的 `.env` 中配置 `SPRING_AI_CHAT_MODEL=openai`、`OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `OPENAI_MODEL`；禁止把真实密钥写入仓库。
+默认使用 `offline-demo` 固定 Provider，并保持 `SPRING_AI_CHAT_MODEL=none`，无 API Key、无公网也能完整演示。它仍只提议本轮 Allowed Tool Set 中的调用，所有调用照常经过 Gateway。需要使用 OpenAI-compatible Provider 时，将 profile 改为 `dev`，并在本机环境变量或未提交的 `.env` 中配置 `SPRING_AI_CHAT_MODEL=openai`、`OPENAI_API_KEY`、`OPENAI_BASE_URL` 和 `OPENAI_MODEL`；禁止把真实密钥写入仓库。
 
 ### M6 跨场景编排演示
 
@@ -135,13 +137,13 @@ M6 不增加万能 Tool，也不增加最终写执行器。`POST /api/v1/agent/c
 两条可重复黄金路径：
 
 ```json
-{"message":"分析本月账单，然后取消视频订阅"}
+{"message":"分析尾号 8899 账户本月账单，然后取消视频订阅"}
 ```
 
 按 `get_accounts/list_transactions + list_subscriptions/analyze_subscription_costs → prepare_subscription_cancellation` 执行，最终停在 `AWAITING_CONFIRMATION`，订阅状态不变。
 
 ```json
-{"message":"查看账户余额并购买适合我的理财产品"}
+{"message":"查看日常账户余额，并购买银盾稳享存款理财产品 1000 元，付款账户为日常账户"}
 ```
 
 按 `get_accounts/get_account_balance + list_wealth_products/get_wealth_portfolio → check_wealth_suitability → prepare_wealth_purchase` 执行，最终停在 `AWAITING_CONFIRMATION`，余额与持仓不变。
@@ -150,13 +152,22 @@ M6 不增加万能 Tool，也不增加最终写执行器。`POST /api/v1/agent/c
 
 ### 本地测试
 
-项目带 Maven Wrapper：
+项目带 Maven Wrapper；直接运行需要本机安装 JDK 17 并正确设置 `JAVA_HOME`：
 
 ```bash
 ./mvnw test
 ```
 
 存在 Docker 时，Testcontainers 会以 MySQL 8.4 和 Redis 7.4 运行登录、Flyway、本人查询、越权和 reset 集成测试；Docker 不可用时这些测试明确标记为 skipped，单元与 ArchUnit 测试仍执行。
+
+### M8 交付验收
+
+```powershell
+.\scripts\acceptance.ps1
+.\scripts\load-smoke.ps1 -Requests 100 -Concurrency 10
+```
+
+备份、故障注入和 OpenAPI 导出脚本见 [部署运行手册](docs/delivery/operations-runbook.md)；完整演示、架构、安全论证、OWASP 映射、测试报告和答辩提纲见 [比赛交付索引](docs/delivery/README.md)。
 
 ## 设计原则
 
@@ -298,9 +309,9 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 
 ### M8：部署、压测与比赛交付
 
-- 完善 Docker Compose、初始化、健康探针、脱敏日志、备份/重置脚本。
-- 完成并发、故障注入、OWASP API、Prompt Injection 回归和演示脚本。
-- 产出演示账号、OpenAPI、架构图、风险规则说明、测试报告和答辩材料。
+- [x] 完善 Docker Compose、固定离线 Provider、初始化、健康探针、Trace ID 脱敏日志、备份/重置脚本。
+- [x] 完成并发烟测、Redis/MySQL 故障注入、OWASP API 映射、Prompt Injection 回归和演示脚本。
+- [x] 产出演示账号、OpenAPI、架构图、风险规则说明、测试报告和答辩材料。
 
 退出条件：全新机器按 README 可启动；无公网模型时可运行固定演示模式；所有质量门禁通过。
 
@@ -321,12 +332,14 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 3. 确认通过前不调用领域 Service；确认后再次做所有权、状态、余额和风险复核，防止 TOCTOU。
 4. 跨场景默认逐个确认写步骤；只有完整展示所有影响且参数哈希绑定时才允许批量确认。
 5. Mock 数据使用固定种子和固定基准日，支持版本校验与一键恢复。
-6. 不为写操作配置 `defaultTools`；未来每轮 Agent 请求动态暴露 Allowed Tool Set，执行端再次校验集合成员资格。
-7. 永久关闭 Tool resolution fallback 与 ChatClient 自动 Tool Calling；未来由用户控制的循环逐次验证并执行 Tool Call。
+6. 不为写操作配置 `defaultTools`；每轮 Agent 请求动态暴露 Allowed Tool Set，执行端再次校验集合成员资格。
+7. 永久关闭 Tool resolution fallback 与 ChatClient 自动 Tool Calling；由应用自控循环逐次验证并执行 Tool Call。
 
 ## Known risks
 
 - 当前 Spring Boot 管理的 Flyway 版本在日志中声明已测试的 MySQL 上限为 8.1，而 Compose/Testcontainers 使用 MySQL 8.4。当前 5 个 migration、Compose 启动和完整测试均通过；按约束暂不改版本，后续评估升级 Flyway 或固定 MySQL。
+- `offline-demo` 的 Prompt Injection 关键词检测只是可重复演示的增强层，不是通用检测器；即使关键词漏判，授权仍由动态 Capability、签名 Allowed Tool Set、严格参数校验和 SecureToolGateway 决定。
+- 离线 Provider 会在提议阶段预筛选适合演示用户风险等级的理财产品；请求不适配的高风险产品时会安全地不生成购买 Tool，但目前可能缺少一次更细粒度的适当性拒绝说明。
 - M2 的 Allowed Tool Set 使用进程内随机 HMAC 密钥；应用重启会使尚未过期的旧快照失效。这是安全的 fail-closed 行为，未来多实例部署需改为受管共享密钥或服务端快照存储。
 - M3 的对话历史和 `ExecutionEvidence` 当前为进程内、按用户绑定且带 TTL 的存储；重启会丢失，多实例部署需迁移到 Redis/持久化 evidence store。
 - 默认环境没有真实 LLM API Key，完整 CI 使用确定性 Fake Model；真实 Provider 的网络、模型行为和费用需要通过独立 `real-llm` profile 验证。
@@ -336,9 +349,11 @@ Agent → Tool → 参数校验 → 权限检查 → 风险检查 → 用户确�
 - M5 适当性结论使用固定演示风险等级和十分钟有效期，只用于虚构沙箱；不等同于真实金融机构的问卷、客户画像或合规审批。
 - M6 的计划、步骤状态和恢复 Evidence 当前与对话一样保存在单实例内存中并受 TTL 约束；重启会安全丢失，多实例部署前需迁移到 Redis/持久化计划存储并加入并发版本控制。
 - M6 为降低组合写风险，将单个计划限制为最多一个 `PREPARE_WRITE`；多写批次确认尚未实现，用户需拆分任务。
-- dev/test AAL2 是固定沙箱码，仅用于比赛演示；没有真实 OTP、设备绑定、尝试次数限流或认证事件审计，绝不能作为生产认证实现。
+- dev/test/offline-demo AAL2 是固定沙箱码，仅用于比赛演示；没有真实 OTP、设备绑定、尝试次数限流或认证事件审计，绝不能作为生产认证实现。
 - M7 为演示便利将 bearer token 保存在当前标签页的 `sessionStorage`；虽有 CSP 和纯文本渲染防护，生产环境仍建议改为 BFF + `HttpOnly`、`Secure`、`SameSite` Cookie，并补 CSRF 防护。
-- M7 六类 Playwright 流程使用确定性 API mock 验证浏览器状态机；真实 Vite→API 联调已覆盖登录、资源读取与 logout revoke，但默认无模型环境只会安全返回 `PROVIDER_UNAVAILABLE`。真实 Provider 与无公网 fixed demo 留待 M8。
+- Playwright 六类流程使用确定性 API mock 验证浏览器状态机；真实 Compose→API 验收已覆盖离线 Agent、登录、资源、越权、reset 和 logout revoke。浏览器到真实 API 的全部确认分支仍建议在每次比赛环境变更后做人工彩排。
 - 当前浏览器没有可用的 `document.modelContext`，WebMCP 已完成注册契约单测，但未在真实支持该提案的浏览器上下文中验证。
+- Springdoc OpenAPI/Swagger UI 在 offline-demo/dev/test 可访问，prod profile 显式关闭；生产发布应通过受控 API portal 提供版本化契约。
+- M8 的 100 请求并发测试是单机只读烟测，不代表容量基准；生产前需在目标硬件进行长稳、峰值、数据库锁竞争和限流压测。
 
-M7 已完成并停止在本阶段，等待验收；未进入 M8 部署、压测与比赛交付阶段。
+M8 比赛交付版已完成。后续改动应以生产化加固或比赛反馈为新范围，不在本提交中进入下一阶段。

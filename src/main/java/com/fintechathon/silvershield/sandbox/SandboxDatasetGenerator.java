@@ -17,7 +17,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 
 @Component
-@Profile({"dev", "test"})
+@Profile("!prod & (dev | test | offline-demo)")
 public class SandboxDatasetGenerator {
 
     private static final String NAMESPACE = "silver-shield/fintechathon-demo-v2/";

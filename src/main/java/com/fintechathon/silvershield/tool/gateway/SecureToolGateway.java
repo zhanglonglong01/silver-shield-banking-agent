@@ -59,7 +59,7 @@ public class SecureToolGateway {
         try {
             id = new ToolId(rawToolName, rawToolVersion);
         } catch (RuntimeException exception) {
-            return finish(invocationId, context, snapshot, safe(rawToolName), safe(rawToolVersion),
+            return finish(invocationId, context, snapshot, safe(rawToolName, 128), safe(rawToolVersion, 32),
                     ToolDecision.DENY, "MALFORMED_TOOL_ID", "Tool 标识不符合白名单格式", null, 0,
                     argumentsHash, startedNanos);
         }
@@ -156,11 +156,11 @@ public class SecureToolGateway {
                 reasonCode, explanation, data, resultCount, completedAt);
     }
 
-    private static String safe(String value) {
+    private static String safe(String value, int maxLength) {
         if (value == null || value.isBlank()) {
             return "invalid";
         }
         String sanitized = value.replaceAll("[^A-Za-z0-9_.-]", "_");
-        return sanitized.substring(0, Math.min(128, sanitized.length()));
+        return sanitized.substring(0, Math.min(maxLength, sanitized.length()));
     }
 }

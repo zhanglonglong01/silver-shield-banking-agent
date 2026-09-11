@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.mock.env.MockEnvironment;
 
 class AuthSessionServiceTest {
 
@@ -50,7 +51,7 @@ class AuthSessionServiceTest {
         properties.setAal2Ttl(Duration.ofMinutes(5));
         properties.setSandboxAal2Code("246810");
         Clock clock = Clock.fixed(Instant.parse("2026-09-01T02:00:00Z"), ZoneOffset.UTC);
-        service = new AuthSessionService(redis, objectMapper, properties, clock);
+        service = new AuthSessionService(redis, objectMapper, properties, clock, new MockEnvironment());
     }
 
     @Test
@@ -104,5 +105,62 @@ class AuthSessionServiceTest {
         org.assertj.core.api.Assertions.assertThatThrownBy(() -> service.stepUp(issued.accessToken(), "000000"))
                 .isInstanceOf(AuthSessionService.StepUpDeniedException.class);
         assertThat(service.find(issued.accessToken()).orElseThrow().assuranceLevel()).isEqualTo(AssuranceLevel.AAL1);
+    }
+
+    @Test
+    void sandboxStepUpMustFailClosedWhenProductionIsMixedWithOfflineDemo() {
+        ObjectMapper objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        BankingSecurityProperties properties = new BankingSecurityProperties();
+        properties.setSessionTtl(Duration.ofHours(2));
+        properties.setAal2Ttl(Duration.ofMinutes(5));
+        properties.setSandboxAal2Code("246810");
+        Clock clock = Clock.fixed(Instant.parse("2026-09-01T02:00:00Z"), ZoneOffset.UTC);
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod", "offline-demo");
+        AuthSessionService productionService = new AuthSessionService(
+                redis, objectMapper, properties, clock, environment);
+        BankingPrincipal principal = new BankingPrincipal(
+                UUID.randomUUID(), "demo.alice", "hash", "林晓岚（虚构）",
+                AppUser.Role.CUSTOMER, AppUser.Status.ACTIVE, AssuranceLevel.AAL1);
+        AuthSessionService.IssuedSession issued = productionService.issue(principal);
+
+        assertThat(productionService.stepUpAvailable()).isFalse();
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                        () -> productionService.stepUp(issued.accessToken(), "246810"))
+                .isInstanceOfSatisfying(AuthSessionService.StepUpDeniedException.class,
+                        exception -> assertThat(exception.reasonCode()).isEqualTo("AAL2_NOT_CONFIGURED"));
+        assertThat(productionService.find(issued.accessToken()).orElseThrow().assuranceLevel())
+                .isEqualTo(AssuranceLevel.AAL1);
+    }
+
+    @Test
+    void productionMustDowngradeAal2SessionPreviouslyIssuedBySandbox() {
+        BankingPrincipal principal = new BankingPrincipal(
+                UUID.randomUUID(), "demo.alice", "hash", "林晓岚（虚构）",
+                AppUser.Role.CUSTOMER, AppUser.Status.ACTIVE, AssuranceLevel.AAL1);
+        AuthSessionService.IssuedSession issued = service.issue(principal);
+        assertThat(service.stepUp(issued.accessToken(), "246810").assuranceLevel())
+                .isEqualTo(AssuranceLevel.AAL2);
+
+        ObjectMapper objectMapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        BankingSecurityProperties properties = new BankingSecurityProperties();
+        properties.setSessionTtl(Duration.ofHours(2));
+        properties.setAal2Ttl(Duration.ofMinutes(5));
+        properties.setSandboxAal2Code("246810");
+        Clock clock = Clock.fixed(Instant.parse("2026-09-01T02:00:00Z"), ZoneOffset.UTC);
+        MockEnvironment environment = new MockEnvironment();
+        environment.setActiveProfiles("prod", "offline-demo");
+        AuthSessionService productionService = new AuthSessionService(
+                redis, objectMapper, properties, clock, environment);
+
+        AuthSession downgraded = productionService.find(issued.accessToken()).orElseThrow();
+
+        assertThat(downgraded.assuranceLevel()).isEqualTo(AssuranceLevel.AAL1);
+        assertThat(downgraded.aal2ExpiresAt()).isNull();
+        assertThat(productionService.find(issued.accessToken())).contains(downgraded);
     }
 }

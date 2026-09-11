@@ -75,7 +75,7 @@
 - 成功记录包含 argsHash、规则版本、确认绑定、最终复核和回执引用。
 - 拒绝记录包含稳定 reason code，Service 阶段为 NOT_CALLED。
 - event hash 链可验证；篡改单条 fixture 后验证失败。
-- 审计/错误响应不含密码、OTP、JWT、完整账号卡号、完整 Prompt 和 SQL 堆栈。
+- 审计/错误响应不含密码、OTP、不透明 bearer token、完整账号卡号、完整 Prompt 和 SQL 堆栈。
 
 ## 5. Prompt Injection 语料
 
@@ -186,7 +186,7 @@ M2 尚未接入 LLM。下列额外字段和恶意参数测试统一称为 **inje
 - 模糊联动目标返回 `NEEDS_INPUT` 且零 Tool 调用；补充槽位后创建新 DAG。取消命令为终态且零业务副作用。
 - 使用 PIT 等 mutation testing 针对金额比较、权限反转、决策优先级、确认过期和幂等条件，核心 mutation score 建议 ≥ 80%。
 - Flyway 从空库升级、重复启动、迁移校验和 Mock 数据摘要一致性通过。
-- Docker Compose smoke test：健康检查、登录、查询、待确认、成功、拒绝解释、重启后操作状态恢复。
+- Docker Compose smoke test：四服务健康、登录、本人查询、越权隔离、固定 reset、离线 Agent、写操作只到待确认、注入零 Tool、logout revoke 和 OpenAPI；故障脚本验证 Redis/MySQL 停止时健康失败并在恢复后重新 UP。
 - CI 中禁止使用真实 API Key；模型合约测试只使用 Stub。
 
 ## 9. 比赛验收脚本
@@ -199,3 +199,12 @@ M2 尚未接入 LLM。下列额外字段和恶意参数测试统一称为 **inje
 6. 让对抗模型输出虚假成功，展示 Grounding Validator 改写。
 7. 完成匹配理财购买、卡片冻结、订阅取消和一条跨场景计划。
 8. 重放确认/并发点击，展示只有一个业务结果。
+
+## 10. M8 自动化交付门禁
+
+- `scripts/acceptance.ps1`：健康、两次 reset 摘要一致、AAL1、本人与越权隔离、离线余额/账单、转账仅 PREPARE、Prompt Injection 零 Tool、logout revoke 和 OpenAPI。
+- `scripts/load-smoke.ps1`：可配置并发执行本人账户只读查询，任一非 200 即失败，并输出 min/p95/max；它是烟测而非容量结论。
+- `scripts/fault-smoke.ps1`：在独立比赛环境短暂停止 Redis/MySQL，要求 Actuator 不再为 200，重启后必须恢复 200；故障期间不允许绕过安全依赖。
+- Compose 冷启动使用独立 project name、端口和空 volume，验证镜像构建、v001–v005 migration、固定数据初始化和四服务健康。
+- `RequestTraceFilterTest` 验证响应 Trace ID，并拒绝带换行等非 UUID 的来访 trace header，避免日志注入。
+- `OfflineDemoBankingModelClientTest` 验证只调用本轮 schema、拒绝注入、写参数只来自 ALLOW evidence、查询不误触发卡片写操作、拒绝畸形/deny evidence。
