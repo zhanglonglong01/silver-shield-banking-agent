@@ -114,7 +114,7 @@ docker compose down
 pwsh ./scripts/reset-sandbox.ps1
 ```
 
-连续 reset 后，资源内容和规范化摘要保持一致。`prod` profile 不注册初始化器、reset endpoint 或固定码 AAL2 能力。
+连续 reset 后，资源内容和规范化摘要保持一致。`prod` profile 不注册初始化器或 reset endpoint；step-up 路径仍存在，但会拒绝固定码升级，并清除或降级遗留的 Sandbox AAL2 会话。
 
 ## 测试与验收
 
@@ -127,8 +127,9 @@ pwsh ./scripts/acceptance.ps1
 
 # 前端测试
 Set-Location frontend
-npm install
+npm ci
 npm test
+npx playwright install chromium
 npm run test:e2e
 
 # Docker 演示环境启动后，可重新生成 README 截图

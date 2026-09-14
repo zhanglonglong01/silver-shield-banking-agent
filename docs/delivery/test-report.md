@@ -2,6 +2,8 @@
 
 报告日期：2026-09-11。以下结果均来自本机最终工作树的实际命令输出；默认部署使用 `offline-demo`，不连接真实银行数据或外部模型。
 
+提交复验：2026-09-14 使用仓库本地 Eclipse Temurin 17 与已恢复的 Docker Engine 29.7.2 再次执行 Maven 全量测试，结果为 162/162、0 failures、0 errors、0 skipped（40 个 Testcontainers 集成测试实际运行）；Vitest 为 12/12；`docker compose up --build -d --wait` 后 API、Web、MySQL、Redis 四服务 healthy；`scripts/acceptance.ps1` 为 9/9。该次复验没有重跑 Playwright、并发、故障注入、备份或依赖审计，因此这些项目仍引用 2026-09-11 的原始验收记录。
+
 ## 质量门禁
 
 | 门禁 | 命令 | 结果 |
@@ -43,4 +45,4 @@
 
 Flyway 启动日志提示其正式测试范围截至 MySQL 8.1，而本项目使用 MySQL 8.4；本轮 5 个 migration、Compose 和 162 个后端测试均通过，仍将其保留为升级前的兼容性风险。离线 Provider 的注入关键词仅是增强层，最终安全边界始终是 Capability Policy、签名 Allowed Tool Set 与 SecureToolGateway。
 
-本机当前未安装可被 `JAVA_HOME` 发现的 JDK，因此最终后端测试通过 Eclipse Temurin 17 Maven 容器并挂载 Docker socket 执行；这验证了 Java 17 编译和真实 Testcontainers，但若要直接在 Windows 主机运行 Maven Wrapper，仍需另行安装 JDK 17。
+本机全局 `JAVA_HOME` 未预设；提交复验显式指向工作区内的 Eclipse Temurin 17 后通过 Maven Wrapper 运行。该本地运行时目录不会进入源码压缩包，其他开发机仍需安装 JDK 17，或直接使用项目 Dockerfile/Compose 构建。

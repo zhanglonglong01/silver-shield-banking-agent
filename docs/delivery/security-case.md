@@ -33,4 +33,4 @@
 
 ## 日志与隐私
 
-每个 HTTP 响应携带 UUID `X-Trace-Id`。日志仅记录 method、URI path、status 和耗时，不记录 query、body、Authorization、密码、AAL2 code 或 Prompt。Tool audit 只保存规范化参数 SHA-256，不保存原始参数。账户和卡片只使用掩码；本项目没有真实银行数据。
+每个 HTTP 响应携带 UUID `X-Trace-Id`。日志仅记录 method、URI path、status 和耗时，不记录 query、body、Authorization、密码、AAL2 code 或 Prompt。Tool audit 只保存 JSON 对象键排序后的参数 SHA-256，不保存原始参数。账户和卡片只使用掩码；本项目没有真实银行数据。

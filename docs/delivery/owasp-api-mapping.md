@@ -4,7 +4,7 @@
 |---|---|---|
 | API1 Broken Object Level Authorization | 所有资源按 `principal.userId` 查询；他人 ID 与不存在 ID 均返回 404 | Alice 读取 Bob 账户/卡片/订阅/操作单拒绝测试与 `acceptance.ps1` |
 | API2 Broken Authentication | Redis 不透明 bearer、SHA-256 server key、TTL、logout revoke、锁定用户拒绝 | login/logout/revoke 与未认证 401 测试 |
-| API3 Broken Object Property Level Authorization | DTO 白名单、Jackson 未知/重复字段拒绝；请求不接受 userId/role/AAL | 参数走私、额外字段和类型错误测试 |
+| API3 Broken Object Property Level Authorization | DTO 白名单、Jackson 未知字段拒绝；请求不接受 userId/role/AAL；重复 JSON key 严格拒绝尚待生产化加固 | 参数走私、额外字段和类型错误测试；补充重复 key 回归测试 |
 | API4 Unrestricted Resource Consumption | 消息/参数/日期/分页限制；Agent 轮数、单轮调用、总调用、上下文和超时上限 | limit、loop、timeout、oversize 测试；并发烟测 |
 | API5 Broken Function Level Authorization | Capability/角色/AAL + Gateway 二次成员检查；reset 仅 DEMO_ADMIN 且 prod 不装配 | Tool 未暴露仍拒绝、admin/customer 边界、prod reset 404 |
 | API6 Unrestricted Access to Sensitive Business Flows | 写操作 PREPARE/确认分离、AAL2、速度规则、幂等和确认单次消费 | 重放、双击并发、频率、AAL2 与 FINAL_GUARD 测试 |

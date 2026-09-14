@@ -6,7 +6,7 @@
 
 ```powershell
 Copy-Item .env.example .env
-docker compose up --build -d
+docker compose up --build -d --wait
 docker compose ps
 Invoke-RestMethod http://localhost:8080/actuator/health
 ```
