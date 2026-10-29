@@ -75,6 +75,12 @@ Assert-True ($balance.evidenceIds.Count -gt 0 -and $billing.evidenceIds.Count -g
 Assert-True ($balance.usedTools -contains "get_accounts") "balance flow did not use grounded account evidence"
 Assert-True ($billing.usedTools -contains "list_transactions") "billing flow did not query the selected account transactions"
 Assert-True ($billing.usedTools -contains "analyze_subscription_costs") "billing flow did not analyze subscription costs"
+foreach ($account in $accounts) {
+    Assert-True ($balance.answer.Contains($account.alias)) "balance answer omitted an account name"
+    Assert-True ($balance.answer.Contains([string]$account.availableBalance)) "balance answer omitted the actual balance"
+}
+Assert-True ($billing.answer.Contains("总收入") -and $billing.answer.Contains("总支出") -and $billing.answer.Contains("大额支出")) "billing answer omitted the requested financial summary"
+Assert-True (-not $balance.answer.Contains("查询已经通过") -and -not $billing.answer.Contains("查询已经通过")) "agent returned a process acknowledgement instead of a banking answer"
 
 Write-Host "[6/9] Transfer and card prepare-only flows"
 $transfer = Chat $alice.accessToken "从日常账户向张伟转账 88 元"

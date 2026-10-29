@@ -111,6 +111,55 @@ class ReadOnlyBankingAgentTest {
     }
 
     @Test
+    void offlineBalanceAnswerMustContainActualBalancesRatherThanProcessAcknowledgement() {
+        var result = fixture(offlineModel()).agent.chat(alice(), "账户余额", null);
+
+        assertThat(result.status()).isEqualTo(AgentStatus.SUCCESS);
+        assertThat(result.answer()).contains("日常账户", "1000.00", "储蓄账户", "500.00", "1500.00")
+                .doesNotContain("查询已经通过", "证据编号");
+        assertThat(result.usedTools()).containsExactly("get_accounts");
+    }
+
+    @Test
+    void offlineNamedAccountMustReturnOnlyItsOwnBalance() {
+        var result = fixture(offlineModel()).agent.chat(alice(), "日常账户余额", null);
+
+        assertThat(result.status()).isEqualTo(AgentStatus.SUCCESS);
+        assertThat(result.answer()).contains("日常账户", "1000.00", "1050.00")
+                .doesNotContain("储蓄账户", "1500.00", "查询已经通过");
+        assertThat(result.usedTools()).contains("get_account_balance");
+    }
+
+    @Test
+    void offlineBillingAnswerMustIncludeIncomeExpensesAndLargeTransactions() {
+        var result = fixture(offlineModel()).agent.chat(alice(), "分析日常账户最近30天的账单、收支与大额交易", null);
+
+        assertThat(result.status()).isEqualTo(AgentStatus.SUCCESS);
+        assertThat(result.answer()).contains("2026-08-02", "2026-08-31", "3000.00", "1620.00",
+                "1380.00", "大额支出", "1500.00")
+                .doesNotContain("查询已经通过");
+        assertThat(result.usedTools()).contains("list_transactions");
+    }
+
+    @Test
+    void numberFreeProviderAcknowledgementMustStillProduceUsefulEvidenceAnswer() {
+        var model = scripted(request -> tools(call("get_accounts", "1.0", "{}")),
+                request -> ModelResponse.answer("查询已经通过当前会话允许的银行工具完成。"));
+        var result = fixture(model).agent.chat(alice(), "账户余额", null);
+
+        assertThat(result.status()).isEqualTo(AgentStatus.SUCCESS);
+        assertThat(result.answer()).contains("1000.00", "500.00", "1500.00")
+                .doesNotContain("查询已经通过");
+    }
+
+    private BankingModelClient offlineModel() {
+        SandboxProperties sandbox = new SandboxProperties();
+        sandbox.setBaselineDate(LocalDate.of(2026, 8, 31));
+        return new com.fintechathon.silvershield.agent.provider.OfflineDemoBankingModelClient(
+                new ObjectMapper(), sandbox);
+    }
+
+    @Test
     void monthlySpendingMustUseDeterministicJavaAnalysis() {
         ScriptedModel model = scripted(
                 request -> tools(transactionCall("2026-08-01", "2026-08-31")),

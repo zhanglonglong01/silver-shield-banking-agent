@@ -100,6 +100,14 @@ public class GroundedAnswerService {
                         "模型答案包含无法由执行证据支持的数字，已替换为确定性摘要");
             }
         }
+        // A valid process acknowledgement is not an answer to a banking query.
+        // Render these facts from audited evidence even when a provider omits all numbers.
+        if (successful.stream().anyMatch(execution -> Set.of(
+                "get_accounts", "get_account_balance", "list_transactions", "list_subscriptions")
+                .contains(execution.call().name()))) {
+            return fallback(successful, analysis, AgentStatus.SUCCESS,
+                    "查询结果由已审计的银行工具证据与确定性计算生成");
+        }
         return new GroundedAnswer(modelAnswer, AgentStatus.SUCCESS,
                 successful.isEmpty() ? "未调用银行 Tool" : "最终回答已通过执行证据一致性检查");
     }
@@ -135,6 +143,7 @@ public class GroundedAnswerService {
                             accounts.append("；");
                         }
                         accounts.append(account.path("alias").asText("账户"))
+                                .append("（").append(account.path("accountMasked").asText()).append("）")
                                 .append(" ").append(account.path("availableBalance").asText())
                                 .append(" ").append(account.path("currency").asText());
                     }
@@ -163,6 +172,16 @@ public class GroundedAnswerService {
             if (analysis.comparison() != null) {
                 answer.append("；较前一周期支出变化 ")
                         .append(analysis.comparison().expenseDifference()).append(" CNY");
+            }
+            answer.append("；大额支出（单笔不低于 1000.00 CNY）共 ")
+                    .append(current.largeTransactions().size()).append(" 笔");
+            if (current.largeTransactions().size() > 5) {
+                answer.append("（以下展示金额最高的前 5 笔）");
+            }
+            for (var transaction : current.largeTransactions().stream().limit(5).toList()) {
+                answer.append("；").append(transaction.bookingTime())
+                        .append(" ").append(transaction.merchant())
+                        .append(" ").append(transaction.amount()).append(" CNY");
             }
             if (analysis.subscriptions().activeCount() > 0) {
                 answer.append("；发现 ").append(analysis.subscriptions().activeCount())
