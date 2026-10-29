@@ -1,6 +1,7 @@
 package com.fintechathon.silvershield.agent.application;
 
 import com.fintechathon.silvershield.tool.model.ToolId;
+import com.fintechathon.silvershield.agent.planning.SubscriptionIntent;
 import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
@@ -58,11 +59,13 @@ public class AgentToolCandidateSelector {
             candidates.add(PREPARE_WEALTH_PURCHASE);
             candidates.add(GET_OPERATION_STATUS);
         }
-        if (containsAny(normalized, "取消订阅", "取消代扣", "关闭自动扣款", "订阅成本", "会员费用")) {
+        if (SubscriptionIntent.relatesToSubscription(normalized)) {
             candidates.add(LIST_SUBSCRIPTIONS);
             candidates.add(ANALYZE_SUBSCRIPTIONS);
-            candidates.add(PREPARE_SUBSCRIPTION_CANCEL);
-            candidates.add(GET_OPERATION_STATUS);
+            if (SubscriptionIntent.requestsCancellation(normalized)) {
+                candidates.add(PREPARE_SUBSCRIPTION_CANCEL);
+                candidates.add(GET_OPERATION_STATUS);
+            }
         }
         if (containsAny(normalized,
                 "账单", "消费", "支出", "收入", "流水", "异常", "商户", "订阅", "代扣", "花",

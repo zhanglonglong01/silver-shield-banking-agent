@@ -6,6 +6,7 @@ import com.fintechathon.silvershield.agent.application.BillingAnalysisService.Bi
 import com.fintechathon.silvershield.agent.application.BillingAnalysisService.PeriodSummary;
 import com.fintechathon.silvershield.agent.model.AgentStatus;
 import com.fintechathon.silvershield.tool.model.ToolDecision;
+import com.fintechathon.silvershield.agent.planning.SubscriptionIntent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.HashSet;
@@ -56,6 +57,13 @@ public class GroundedAnswerService {
                     .filter(e -> e.result().decision() == ToolDecision.ALLOW).findFirst().orElseThrow();
             JsonNode operation = preparation.evidence().relevantStructuredResult();
             JsonNode summary = operation.path("summary");
+            if (preparation.call().name().equals("prepare_subscription_cancellation")) {
+                return new GroundedAnswer(
+                        "已创建待确认的订阅取消：%s，费用 %s CNY/%s。%s。当前尚未取消；请核对目标后使用独立确认按钮。"
+                                .formatted(summary.path("service").asText(), summary.path("amount").asText(),
+                                        cycleLabel(summary.path("billingCycle").asText()), summary.path("effect").asText()),
+                        AgentStatus.SUCCESS, "已生成指定订阅的取消预览，尚未变更订阅状态");
+            }
             if (!preparation.call().name().equals("prepare_transfer")) {
                 return new GroundedAnswer(
                         "已创建待确认操作（%s），所需认证等级 %s。当前尚未发生资金或状态变更；请通过独立确认端点完成或取消。"
@@ -100,10 +108,17 @@ public class GroundedAnswerService {
                         "模型答案包含无法由执行证据支持的数字，已替换为确定性摘要");
             }
         }
+        if (SubscriptionIntent.requestsCancellation(userMessage)) {
+            String costs = subscriptionCosts(successful);
+            return new GroundedAnswer(
+                    "尚未生成取消操作。请指定一个可取消订阅的完整名称；已取消的项目不能重复取消，多项匹配时需要进一步明确。"
+                            + (costs == null ? "" : "\n" + costs),
+                    AgentStatus.NEEDS_INPUT, "未获得唯一且可取消的订阅目标，未执行状态变更");
+        }
         // A valid process acknowledgement is not an answer to a banking query.
         // Render these facts from audited evidence even when a provider omits all numbers.
         if (successful.stream().anyMatch(execution -> Set.of(
-                "get_accounts", "get_account_balance", "list_transactions", "list_subscriptions")
+                "get_accounts", "get_account_balance", "list_transactions", "list_subscriptions", "analyze_subscription_costs")
                 .contains(execution.call().name()))) {
             return fallback(successful, analysis, AgentStatus.SUCCESS,
                     "查询结果由已审计的银行工具证据与确定性计算生成");
@@ -117,6 +132,11 @@ public class GroundedAnswerService {
             BillingAnalysis analysis,
             AgentStatus status,
             String summary) {
+        String costs = subscriptionCosts(successful);
+        if (costs != null) {
+            String billing = analysis.periods().isEmpty() ? "" : billingFallback(analysis) + "\n";
+            return new GroundedAnswer(billing + costs, status, summary);
+        }
         if (analysis.hasData()) {
             return new GroundedAnswer(billingFallback(analysis), status, summary);
         }
@@ -155,6 +175,47 @@ public class GroundedAnswerService {
             }
         }
         return new GroundedAnswer("当前没有足够的执行证据回答该问题。", status, summary);
+    }
+
+    private String subscriptionCosts(List<AgentToolExecution> successful) {
+        for (AgentToolExecution execution : successful) {
+            if (!execution.call().name().equals("analyze_subscription_costs")) continue;
+            JsonNode data = execution.evidence().relevantStructuredResult();
+            if (!data.path("items").isArray() || !data.hasNonNull("monthlyEquivalent")
+                    || !data.hasNonNull("annualizedCost")) continue;
+            StringBuilder result = new StringBuilder("订阅成本：有效订阅月均 ")
+                    .append(moneyText(data.path("monthlyEquivalent"))).append(" CNY，年化 ")
+                    .append(moneyText(data.path("annualizedCost"))).append(" CNY。\n");
+            for (JsonNode item : data.path("items")) {
+                result.append(item.path("serviceName").asText()).append("：")
+                        .append(moneyText(item.path("amount"))).append(" CNY/")
+                        .append(cycleLabel(item.path("billingCycle").asText()))
+                        .append("，折合每月 ").append(moneyText(item.path("monthlyEquivalent"))).append(" CNY，")
+                        .append(switch (item.path("status").asText()) {
+                            case "ACTIVE" -> "生效中";
+                            case "PAUSED" -> "已暂停（不计入有效订阅成本）";
+                            case "CANCELLED" -> "已取消（不计入有效订阅成本）";
+                            default -> "未生效（不计入有效订阅成本）";
+                        }).append(item.path("cancellable").asBoolean(false) ? "，可申请取消" : "，不可取消")
+                        .append("。\n");
+            }
+            return result.append("如需取消，请明确指定订阅名称，系统会先生成待确认预览。").toString();
+        }
+        return null;
+    }
+
+    private static String cycleLabel(String cycle) {
+        return switch (cycle) {
+            case "WEEKLY" -> "周";
+            case "MONTHLY" -> "月";
+            case "QUARTERLY" -> "季";
+            case "YEARLY" -> "年";
+            default -> cycle;
+        };
+    }
+
+    private static String moneyText(JsonNode amount) {
+        return new BigDecimal(amount.asText()).setScale(2, RoundingMode.HALF_UP).toPlainString();
     }
 
     private String billingFallback(BillingAnalysis analysis) {

@@ -8,6 +8,7 @@ import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelResp
 import com.fintechathon.silvershield.agent.provider.BankingModelClient.ModelToolCall;
 import com.fintechathon.silvershield.agent.provider.BankingModelClient.ToolExchange;
 import com.fintechathon.silvershield.config.SandboxProperties;
+import com.fintechathon.silvershield.agent.planning.SubscriptionIntent;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -169,11 +170,21 @@ public class OfflineDemoBankingModelClient implements BankingModelClient {
     }
 
     private ObjectNode subscriptionCancellation(String message, String normalized, Map<String, JsonNode> completed) {
-        if (!containsAny(normalized, "取消", "关闭", "停止", "退订", "cancel", "unsubscribe")) return null;
-        Optional<String> subscription = selectByText(
-                message, data(completed, "list_subscriptions"), "serviceName", "id", false);
-        if (subscription.isEmpty()) return null;
-        return objectMapper.createObjectNode().put("subscriptionId", subscription.get()).put("reasonCode", "COST_SAVING");
+        if (!SubscriptionIntent.requestsCancellation(message)) return null;
+        JsonNode subscriptions = data(completed, "list_subscriptions");
+        if (!subscriptions.isArray()) return null;
+        List<JsonNode> matches = new ArrayList<>();
+        subscriptions.forEach(row -> {
+            String label = row.path("serviceName").asText().replace("（虚构）", "").trim();
+            String specific = label.replaceAll("(?:订阅|套餐|会员|服务|月卡)$", "");
+            if (specific.length() >= 2 && !Set.of("订阅", "套餐", "会员", "服务", "月卡").contains(specific)
+                    && (message.contains(label) || message.contains(specific))) matches.add(row);
+        });
+        if (matches.size() != 1) return null;
+        JsonNode target = matches.get(0);
+        if (!Set.of("ACTIVE", "PAUSED").contains(target.path("status").asText())) return null;
+        return objectMapper.createObjectNode().put("subscriptionId", target.path("id").asText())
+                .put("reasonCode", "COST_SAVING");
     }
 
     private ObjectNode suitability(String message, String normalized, Map<String, JsonNode> completed) {

@@ -29,10 +29,21 @@ public class SandboxDatasetInitializer implements ApplicationRunner {
         if (!properties.isEnabled()) {
             return;
         }
-        if (!resetService.isCurrentAndIntact()) {
+        var existing = resetService.metadata();
+        if (existing.isEmpty()) {
             SandboxDatasetMetadata metadata = resetService.reset();
             log.info("Initialized mock banking dataset version={} digest={}",
                     metadata.datasetVersion(), metadata.datasetDigest());
+        } else {
+            var metadata = existing.orElseThrow();
+            if (!metadata.datasetVersion().equals(properties.getDatasetVersion())
+                    || metadata.randomSeed() != properties.getRandomSeed()
+                    || !metadata.baselineDate().equals(properties.getBaselineDate())) {
+                throw new IllegalStateException("Sandbox dataset configuration changed; use explicit reset to replace existing data");
+            }
+            // Transfers and cancellations legitimately change the baseline digest.
+            // Only the explicit reset endpoint may discard those business changes.
+            log.info("Preserved existing sandbox dataset version={}", metadata.datasetVersion());
         }
     }
 }

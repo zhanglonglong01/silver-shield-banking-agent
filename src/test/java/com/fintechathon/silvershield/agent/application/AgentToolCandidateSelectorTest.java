@@ -8,6 +8,23 @@ class AgentToolCandidateSelectorTest {
     private final AgentToolCandidateSelector selector = new AgentToolCandidateSelector();
 
     @Test
+    void subscriptionAdviceAndNegationMustNeverExposeCancellation() {
+        for (String message : java.util.List.of("分析我的订阅成本并找出可以取消的订阅", "哪些订阅可以取消", "不要取消云盘订阅", "分析账单，然后找出可以取消的订阅")) {
+            assertThat(selector.select(message)).extracting(tool -> tool.name())
+                    .contains("list_subscriptions", "analyze_subscription_costs")
+                    .doesNotContain("prepare_subscription_cancellation");
+        }
+    }
+
+    @Test
+    void cancellationVerbAndSubscriptionNameNeedNotBeAdjacent() {
+        for (String message : java.util.List.of("取消我的云盘套餐订阅", "请帮我取消云盘", "退订音乐会员", "分析账单，然后取消视频订阅")) {
+            assertThat(selector.select(message)).extracting(tool -> tool.name())
+                    .contains("prepare_subscription_cancellation");
+        }
+    }
+
+    @Test
     void cardIntentMustExposePreparationButNeverFinalMutation() {
         assertThat(selector.select("请冻结我的银行卡")).extracting(tool -> tool.name())
                 .contains("list_cards", "get_card_controls", "prepare_card_status_change")

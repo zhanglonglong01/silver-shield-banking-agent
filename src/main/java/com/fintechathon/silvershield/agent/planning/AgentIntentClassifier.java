@@ -33,7 +33,7 @@ public class AgentIntentClassifier {
                 "卡限额", "card", "freeze card")) {
             scenes.add(BankingScene.CARD);
         }
-        if (containsAny(normalized, "订阅", "代扣", "会员", "subscription", "direct debit")) {
+        if (SubscriptionIntent.relatesToSubscription(normalized)) {
             scenes.add(BankingScene.SUBSCRIPTION);
         }
         if (containsAny(normalized, "理财", "投资", "持仓", "基金", "产品", "wealth", "portfolio", "invest")) {

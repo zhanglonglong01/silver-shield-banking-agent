@@ -54,12 +54,21 @@ export const useAgentStore = defineStore('agent', {
           `/api/v1/operations/${encodeURIComponent(action.operationId)}/confirm`,
           { method: 'POST', body: JSON.stringify({ challengeId: action.challengeId, confirmed }) }
         )
+        const outcome = String(this.operationResult?.outcome ?? this.operationResult?.status ?? 'UNKNOWN')
+        const succeeded = outcome === 'SUCCEEDED'
+        const rejected = !confirmed && (outcome === 'CANCELLED' || this.operationResult?.reasonCode === 'USER_CANCELLED')
+        const explanation = String(this.operationResult?.explanation ?? this.operationResult?.reasonCode ?? '请查看操作回执')
         this.messages.push({
           id: crypto.randomUUID(), role: 'system',
-          content: confirmed ? '独立确认已提交。操作结果已由安全执行链返回。' : '你已拒绝该操作，未提交业务变更。',
-          status: confirmed ? 'CONFIRMED' : 'CANCELLED'
+          content: succeeded ? '操作已执行成功，服务端已返回成功回执。'
+            : rejected ? '你已拒绝该操作，未提交业务变更。'
+              : `操作未完成：${explanation}。`,
+          status: succeeded ? 'SUCCEEDED' : rejected ? 'CANCELLED' : outcome
         })
-        if (this.lastResult) this.lastResult.pendingActions = []
+        if (this.lastResult && (succeeded || rejected || this.operationResult?.operation
+          && ['DENIED', 'FAILED', 'EXPIRED', 'CANCELLED'].includes(String((this.operationResult.operation as Record<string, unknown>).status)))) {
+          this.lastResult.pendingActions = []
+        }
       } catch (error) {
         this.decisionError = error instanceof Error ? error.message : '确认失败，请重新检查操作状态。'
         this.messages.push({ id: crypto.randomUUID(), role: 'system', content: this.decisionError, status: 'CONFIRMATION_FAILED' })

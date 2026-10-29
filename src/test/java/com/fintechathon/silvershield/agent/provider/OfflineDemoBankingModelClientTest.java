@@ -289,6 +289,56 @@ class OfflineDemoBankingModelClientTest {
         return new ModelRequest("system", List.of(), message, exchanges, "", List.of(schemas));
     }
 
+    @Test
+    void subscriptionAdviceMustStayReadOnlyEvenIfWriteSchemaIsPresent() {
+        var response = client.complete(request("分析我的订阅成本并找出可以取消的订阅", List.of(subscriptions()),
+                schema("prepare_subscription_cancellation")));
+        assertThat(response.toolCalls()).isEmpty();
+    }
+
+    @Test
+    void subscriptionMustMatchSpecificUniqueNameNotGenericSubscriptionWord() {
+        var response = client.complete(request("取消我的云盘套餐订阅", List.of(subscriptions()),
+                schema("prepare_subscription_cancellation")));
+        assertThat(response.toolCalls()).singleElement().satisfies(call ->
+                assertThat(call.arguments().path("subscriptionId").asText()).isEqualTo("cloud"));
+        assertThat(client.complete(request("取消我的订阅", List.of(subscriptions()),
+                schema("prepare_subscription_cancellation"))).toolCalls()).isEmpty();
+        assertThat(client.complete(request("取消我的云盘和数字刊订阅", List.of(subscriptions()),
+                schema("prepare_subscription_cancellation"))).toolCalls()).isEmpty();
+    }
+
+    @Test
+    void missingOrCancelledSubscriptionMustNotFallBackToAnotherActiveSubscription() {
+        ToolExchange one = exchange("list_subscriptions", """
+                {"decision":"ALLOW","data":[{"id":"digital","serviceName":"数字刊订阅","status":"ACTIVE"},
+                {"id":"cloud","serviceName":"云盘套餐","status":"CANCELLED"}]}
+                """);
+        for (String message : List.of("取消我的云盘套餐订阅", "取消我的视频订阅", "取消订阅")) {
+            assertThat(client.complete(request(message, List.of(one), schema("prepare_subscription_cancellation"))).toolCalls()).isEmpty();
+        }
+    }
+
+    @Test
+    void pausedSubscriptionCanBeExplicitlySelectedButDeniedEvidenceCannotSelectAnything() {
+        ToolExchange paused = exchange("list_subscriptions", """
+                {"decision":"ALLOW","data":[{"id":"gym","serviceName":"健身月卡","status":"PAUSED"}]}
+                """);
+        assertThat(client.complete(request("取消健身月卡", List.of(paused), schema("prepare_subscription_cancellation"))).toolCalls())
+                .singleElement().satisfies(call -> assertThat(call.arguments().path("subscriptionId").asText()).isEqualTo("gym"));
+        ToolExchange denied = exchange("list_subscriptions", """
+                {"decision":"DENY","data":[{"id":"other-user","serviceName":"云盘套餐","status":"ACTIVE"}]}
+                """);
+        assertThat(client.complete(request("取消云盘套餐订阅", List.of(denied), schema("prepare_subscription_cancellation"))).toolCalls()).isEmpty();
+    }
+
+    private ToolExchange subscriptions() {
+        return exchange("list_subscriptions", """
+                {"decision":"ALLOW","data":[{"id":"digital","serviceName":"数字刊订阅","status":"ACTIVE"},
+                {"id":"cloud","serviceName":"云盘套餐","status":"ACTIVE"}]}
+                """);
+    }
+
     private ToolExchange exchange(String tool, String response) {
         return new ToolExchange(1,
                 new ModelToolCall("call-" + tool, tool, "1.0", mapper.createObjectNode()), response);

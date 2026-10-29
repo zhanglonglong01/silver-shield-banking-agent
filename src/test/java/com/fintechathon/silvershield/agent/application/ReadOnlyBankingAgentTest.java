@@ -96,6 +96,16 @@ class ReadOnlyBankingAgentTest {
     }
 
     @Test
+    void modelCannotRequestCancellationToolDuringSubscriptionAdvice() {
+        var model = scripted(request -> tools(call("prepare_subscription_cancellation", "1.0",
+                "{\"subscriptionId\":\"" + ACCOUNT_ONE + "\"}")),
+                request -> ModelResponse.answer("无法执行"));
+        var result = fixture(model).agent.chat(alice(), "分析我的订阅成本并找出可以取消的订阅", null);
+        assertThat(result.status()).isEqualTo(AgentStatus.TOOL_DENIED);
+        assertThat(result.pendingActions()).isEmpty();
+    }
+
+    @Test
     void balanceQueryMustUseOwnedAccountResult() {
         ScriptedModel model = scripted(
                 request -> tools(call("get_account_balance", "1.0",

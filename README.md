@@ -108,6 +108,8 @@ docker compose down
 - Random seed：`2026`
 - Baseline date：`2026-08-31`
 
+普通重启会保留已完成的转账、订阅取消等业务变更。只有首次启动会自动生成数据；显式重置会清除演示操作并恢复固定基线。
+
 一键重置：
 
 ```powershell

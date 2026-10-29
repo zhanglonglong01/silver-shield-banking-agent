@@ -48,4 +48,23 @@ describe('agent store', () => {
     expect(store.lastResult.pendingActions).toHaveLength(1)
     expect(store.decisionError).toBe('认证强度不足')
   })
+
+  it('uses the server outcome instead of claiming success for a denied HTTP 200 confirmation', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ outcome: 'DENIED',
+      reasonCode: 'AAL2_REQUIRED', explanation: '请完成加强认证', operation: { status: 'AWAITING_STEP_UP' } }), { status: 200 }))
+    const store = useAgentStore()
+    store.lastResult = { answer: '', conversationId: 'c1', status: 'SUCCESS', usedTools: [], evidenceIds: [], executionSummary: '', pendingActions: [action], taskPlan: null }
+    await store.decide(action, true)
+    expect(store.messages.at(-1)?.status).toBe('DENIED')
+    expect(store.messages.at(-1)?.content).toContain('操作未完成')
+    expect(store.lastResult.pendingActions).toHaveLength(1)
+  })
+
+  it('shows final success only when the server returns a succeeded outcome', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ outcome: 'SUCCEEDED', receipt: { status: 'SUCCEEDED' } }), { status: 200 }))
+    const store = useAgentStore()
+    await store.decide(action, true)
+    expect(store.messages.at(-1)?.status).toBe('SUCCEEDED')
+    expect(store.messages.at(-1)?.content).toContain('成功回执')
+  })
 })

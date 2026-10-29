@@ -266,9 +266,7 @@ public class AgentOrchestrationService {
             plan.add("prepare_transfer", ToolAccessMode.PREPARE_WRITE,
                     dependencies.toArray(String[]::new));
         }
-        boolean subscriptionCancellation = containsAny(goal, "取消订阅", "取消代扣", "关闭自动扣款",
-                "cancel subscription") || (containsAny(goal, "取消", "关闭", "停止")
-                && containsAny(goal, "订阅", "代扣", "会员"));
+        boolean subscriptionCancellation = SubscriptionIntent.requestsCancellation(goal);
         if (scenes.contains(BankingScene.SUBSCRIPTION) && subscriptionCancellation) {
             plan.add("prepare_subscription_cancellation", ToolAccessMode.PREPARE_WRITE,
                     "analyze_subscription_costs");

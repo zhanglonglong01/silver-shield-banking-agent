@@ -11,6 +11,12 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class AgentOrchestrationServiceTest {
+    @Test
+    void linkedAdviceMustNotAddCancellationStep() {
+        var result = service.start(USER, UUID.randomUUID(), "分析账单，然后找出可以取消的订阅");
+        assertThat(result.plan().steps()).extracting(step -> step.tool().name())
+                .contains("analyze_subscription_costs").doesNotContain("prepare_subscription_cancellation");
+    }
     private static final UUID USER = UUID.fromString("11111111-1111-1111-1111-111111111111");
     private static final Clock CLOCK = Clock.fixed(Instant.parse("2026-09-03T00:00:00Z"), ZoneOffset.UTC);
     private final AgentOrchestrationService service = new AgentOrchestrationService(
