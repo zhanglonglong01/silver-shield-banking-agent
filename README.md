@@ -120,6 +120,26 @@ pwsh ./scripts/reset-sandbox.ps1
 
 ## 测试与验收
 
+### 接入 DeepSeek
+
+DeepSeek 使用现有的 Spring AI OpenAI-compatible 接入层，无需更换安全网关。在仓库根目录的本地 `.env` 中设置：
+
+```dotenv
+SPRING_PROFILES_ACTIVE=dev,deepseek
+DEEPSEEK_API_KEY=填写你自己的密钥
+DEEPSEEK_MODEL=deepseek-flash
+```
+
+然后运行 `docker compose up --build -d --wait`。`.env` 被 Git 和 Docker 构建上下文排除，密钥只注入 API 容器，不提供给前端。不要将密钥写入示例配置、截图或提交材料。
+
+此模式使用真实模型理解请求和提出工具调用，工具仍由应用自己的循环经 SecureToolGateway 执行；关闭框架自动调用、工具解析 fallback 和 DeepSeek 思考模式。模型故障时明确返回失败，不会悄悄切换成离线成功结果。资金与状态变更仍需独立确认。
+
+账户、账单和订阅查询的最终事实由服务端根据审计证据渲染，不采用模型自行生成的金额或历史状态描述。2026-10-29 的 DeepSeek 实际接入范围与测试结果见[接入验收记录](docs/delivery/deepseek-validation.md)。
+
+关闭思考模式是为了避免工具结果回传时依赖推理内容，并控制响应时间；模型和接口以 [DeepSeek 官方文档](https://api-docs.deepseek.com/guides/tool_calls/)为准。切回离线演示时，将 `.env` 中的 `SPRING_PROFILES_ACTIVE` 改为 `offline-demo`，再运行 `docker compose up -d --wait`。
+
+### 测试命令
+
 ```powershell
 # 端到端验收：登录、Agent 场景、越权、注入、注销、OpenAPI 等
 pwsh ./scripts/acceptance.ps1

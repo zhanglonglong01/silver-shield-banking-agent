@@ -63,7 +63,10 @@ public final class SecureManagedOperationTools {
     public static final class PrepareCardStatusChangeTool extends ManagedTool<PrepareCardStatusArguments> {
         public PrepareCardStatusChangeTool(ManagedOperationUseCase operations) { super(operations); }
         @Override public ToolDefinition definition() { return toolDefinition("prepare_card_status_change",
-                "Create a confirmation-bound owned-card status change without changing the card",
+                "Create a confirmation-bound owned-card status change without changing the card. "
+                        + "targetStatus: ACTIVE (unfreeze), FROZEN (freeze), LOST (report lost). "
+                        + "reasonCode must be USER_REQUEST, SUSPECTED_FRAUD, CARD_LOST or SECURITY_CONTROL; "
+                        + "use USER_REQUEST for a customer's ordinary freeze/unfreeze request.",
                 ToolCapability.CARD_MANAGE, ToolAccessMode.PREPARE_WRITE,
                 Set.of("cardId", "targetStatus", "reasonCode"), true); }
         @Override public Class<PrepareCardStatusArguments> argumentsType() { return PrepareCardStatusArguments.class; }

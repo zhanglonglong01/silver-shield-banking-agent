@@ -57,6 +57,16 @@ class SubscriptionAnswerTest {
     }
 
     @Test
+    void deniedPreparationMustRemainDeniedEvenAfterSuccessfulReads() throws Exception {
+        var executions = List.of(execution("analyze_subscription_costs", COSTS, ToolDecision.ALLOW),
+                execution("prepare_subscription_cancellation", "{}", ToolDecision.DENY));
+        var result = service.ground("取消我的云盘套餐订阅", "查询完成", executions,
+                new BillingAnalysisService().analyze(executions));
+        assertThat(result.status()).isEqualTo(AgentStatus.TOOL_DENIED);
+        assertThat(result.answer()).contains("未生成待确认操作", "TEST", "未执行资金或状态变更");
+    }
+
+    @Test
     void hallucinatedCostMustBeReplacedByAuditedCostEvidence() throws Exception {
         var result = ground("分析订阅成本", "月费 999999.00", execution("analyze_subscription_costs", COSTS, ToolDecision.ALLOW));
         assertThat(result.status()).isEqualTo(AgentStatus.GROUNDING_FAILED);

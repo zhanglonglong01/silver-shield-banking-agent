@@ -21,6 +21,7 @@ class SecretHygieneTest {
                 Path.of("src/main/resources/application-test.yml"),
                 Path.of("src/main/resources/application-prod.yml"),
                 Path.of("src/main/resources/application-llm.yml"),
+                Path.of("src/main/resources/application-deepseek.yml"),
                 Path.of("src/main/resources/application-offline-demo.yml"),
                 Path.of("compose.yml"),
                 Path.of(".env.example"));

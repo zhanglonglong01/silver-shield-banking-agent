@@ -1,0 +1,18 @@
+spring:
+  ai:
+    model:
+      chat: openai
+    retry:
+      max-attempts: 1
+    openai:
+      api-key: ${DEEPSEEK_API_KEY}
+      base-url: https://api.deepseek.com
+      chat:
+        completions-path: /chat/completions
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-flash}
+          temperature: 0.1
+          max-tokens: 1536
+          extra-body:
+            thinking:
+              type: disabled

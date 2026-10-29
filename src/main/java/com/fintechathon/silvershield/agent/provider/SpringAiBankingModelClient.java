@@ -12,6 +12,7 @@ import com.fintechathon.silvershield.tool.schema.AgentToolSchema;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.LinkedHashMap;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -58,7 +59,17 @@ public class SpringAiBankingModelClient implements BankingModelClient {
                     .internalToolExecutionEnabled(false)
                     .build();
             ChatResponse response = chatModel.call(new Prompt(messages, options));
-            return fromResponse(response, request.allowedTools());
+            ModelResponse proposed = fromResponse(response, request.allowedTools());
+            // These facts are always rendered from audited evidence by GroundedAnswerService.
+            // Discard model prose, including claims about historical cancellation or invented amounts.
+            Set<String> groundedQueries = Set.of("get_accounts", "get_account_balance", "list_transactions",
+                    "list_subscriptions", "analyze_subscription_costs");
+            if (proposed.toolCalls().isEmpty() && !request.toolExchanges().isEmpty()
+                    && !request.allowedTools().isEmpty()
+                    && request.allowedTools().stream().allMatch(schema -> groundedQueries.contains(schema.id().name()))) {
+                return ModelResponse.answer("查询完成");
+            }
+            return proposed;
         } catch (ModelProviderException exception) {
             throw exception;
         } catch (RuntimeException exception) {

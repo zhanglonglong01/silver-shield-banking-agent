@@ -77,6 +77,15 @@ public class GroundedAnswerService {
                                     operation.path("requiredAal").asText()),
                     AgentStatus.SUCCESS, "仅准备了受挑战绑定的转账操作，资金未变化");
         }
+        var deniedPreparation = executions.stream()
+                .filter(e -> e.call().name().startsWith("prepare_") && e.result().decision() != ToolDecision.ALLOW)
+                .findFirst();
+        if (deniedPreparation.isPresent()) {
+            var denial = deniedPreparation.orElseThrow().result();
+            return new GroundedAnswer(
+                    "未生成待确认操作，未执行资金或状态变更。拒绝原因：" + denial.reasonCode() + "。" + denial.explanation(),
+                    AgentStatus.TOOL_DENIED, "操作准备被安全执行链拒绝：" + denial.reasonCode());
+        }
         if ((isUnsupportedWriteRequest(normalizedUser) || FAKE_WRITE_SUCCESS.matcher(modelAnswer).find())
                 && !successfulPreparation) {
             return new GroundedAnswer(
