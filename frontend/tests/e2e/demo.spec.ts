@@ -85,3 +85,28 @@ test('logout handles the backend empty response and returns to login', async ({ 
   await page.getByRole('button', { name: /林晓（虚构）/ }).click()
   await expect(page).toHaveURL(/\/login/)
 })
+
+test('recent transactions include a current transfer and baseline remains selectable', async ({ page }) => {
+  await mockBackend(page)
+  const today = new Date().toISOString().slice(0, 10)
+  await page.route(/\/api\/v1\/accounts(?:\/|\?|$)/, async route => {
+    const url = new URL(route.request().url())
+    if (url.pathname.endsWith('/accounts')) return json(route, [{
+      id: 'daily', alias: '日常账户', accountMasked: '**** 8899', accountType: 'CHECKING',
+      currency: 'CNY', ledgerBalance: '83316.43', availableBalance: '83316.43', status: 'ACTIVE', dailyTransferLimit: '50000.00'
+    }])
+    if (url.searchParams.get('to') === '2026-08-31') return json(route, [])
+    expect(url.searchParams.get('to')).toBe(today)
+    return json(route, [{ id: 'current-transfer', bookingTime: `${today}T05:14:49Z`, direction: 'OUT',
+      amount: '88.00', currency: 'CNY', categoryCode: 'TRANSFER', merchantName: '张伟（虚构）',
+      description: '转账', counterpartyMasked: '**** 3208', status: 'POSTED', balanceAfter: '83316.43' }])
+  })
+  await login(page)
+  await page.getByRole('link', { name: '账户与账单' }).click()
+  await expect(page.getByRole('cell', { name: /张伟/ })).toBeVisible()
+  await expect(page.getByRole('cell', { name: '-¥88.00', exact: true })).toBeVisible()
+  await page.getByRole('combobox', { name: '交易范围' }).selectOption('baseline')
+  await expect(page.getByText('所选账户在此期间暂无交易')).toBeVisible()
+  await page.getByRole('combobox', { name: '交易范围' }).selectOption('recent')
+  await expect(page.getByRole('cell', { name: /张伟/ })).toBeVisible()
+})
