@@ -37,7 +37,7 @@
 
 ## 自动化测试
 
-`./mvnw.cmd -o -B -ntp test`：**187 项通过，0 failures、0 errors、0 skipped**，包含 MySQL / Redis Testcontainers 和 ArchUnit。
+`./mvnw.cmd -o -B -ntp test`：**194 项通过，0 failures、0 errors、0 skipped**，包含 MySQL / Redis Testcontainers 和 ArchUnit。前端单元测试 23 项、浏览器测试 11 项通过。
 
 新增兼容性验证覆盖：
 
@@ -48,3 +48,11 @@
 - 已成功查询之后，准备操作被拒绝仍保持拒绝状态。
 
 运行状态：API、Web、MySQL、Redis 四个服务均 healthy。以上是本地单轮验收记录，不代表模型在所有表达下都能完成任务；异常仍由原有权限、工具预算、超时和最终确认机制限制。
+
+## 模型身份信息
+
+模型不能凭自身知识判断外部系统连接了哪个服务。`GET /api/v1/agent/runtime` 从服务端实际选择的 Provider 与配置中返回 `mode`、`provider`、`model`、`configured`，需要认证，不包含密钥、端点、签名或完整环境变量。
+
+页面顶部显示该元数据；读取失败时显示“模型配置暂不可读”，不会猜测当前 Provider。常见身份询问（如“你接入 DeepSeek 了吗”）由服务端生成回答并写入正常会话历史，不调用银行工具，也不让模型自报提供商。其他模型身份问题的系统上下文同样包含这份安全摘要。
+
+这里的 `configured` 表示已选择真实模型模式且具备模型 Bean 和凭据，不等于实时外部连通性检测。实际浏览器验收确认顶部显示 `DeepSeek · deepseek-flash`，身份回答来自运行配置；随后在同一会话查询余额，真实模型调用银行工具并成功返回结果。

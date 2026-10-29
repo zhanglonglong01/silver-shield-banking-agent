@@ -14,6 +14,7 @@ async function mockBackend(page: Page) {
     const url = new URL(route.request().url())
     const path = url.pathname
     const body = route.request().postDataJSON?.() as Record<string, unknown> | null
+    if (path.endsWith('/agent/runtime')) return json(route, { mode: 'LIVE_MODEL', provider: 'DeepSeek', model: 'deepseek-flash', configured: true })
     if (path.endsWith('/auth/login')) return json(route, { accessToken: 'opaque-e2e-token', tokenType: 'Bearer', expiresAt: '2026-09-01T00:00:00Z', assuranceLevel: 'AAL1', user: user() })
     if (path.endsWith('/auth/me')) return json(route, { user: user(), assuranceLevel: 'AAL1', aal2Available: true })
     if (path.endsWith('/auth/step-up')) return json(route, { assuranceLevel: 'AAL2', expiresAt: '2026-08-31T12:05:00Z' })
@@ -48,6 +49,11 @@ function agentResult(label: string, tool: string, writes: boolean) {
 }
 
 async function login(page: Page) { await page.goto('/login'); await page.getByRole('button', { name: '安全登录' }).click(); await expect(page).toHaveURL(/\/agent/) }
+
+test('model badge reflects the authenticated server configuration', async ({ page }) => {
+  await mockBackend(page); await login(page)
+  await expect(page.getByTestId('model-runtime')).toHaveText('DeepSeek · deepseek-flash')
+})
 
 for (const label of Object.keys(toolByScene)) {
   test(`${label} browser demo exposes evidence and safe state`, async ({ page }) => {

@@ -1,6 +1,7 @@
 package com.fintechathon.silvershield.agent.api;
 
 import com.fintechathon.silvershield.agent.application.ReadOnlyBankingAgent;
+import com.fintechathon.silvershield.agent.application.ModelRuntimeInfoService;
 import com.fintechathon.silvershield.agent.model.AgentChatResult;
 import com.fintechathon.silvershield.security.BankingPrincipal;
 import jakarta.validation.Valid;
@@ -9,6 +10,7 @@ import jakarta.validation.constraints.Size;
 import java.util.UUID;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -19,10 +21,15 @@ import org.springframework.web.bind.annotation.RequestHeader;
 public class AgentChatController {
 
     private final ReadOnlyBankingAgent agent;
+    private final ModelRuntimeInfoService runtimeInfo;
 
-    public AgentChatController(ReadOnlyBankingAgent agent) {
+    public AgentChatController(ReadOnlyBankingAgent agent, ModelRuntimeInfoService runtimeInfo) {
         this.agent = agent;
+        this.runtimeInfo = runtimeInfo;
     }
+
+    @GetMapping("/runtime")
+    public ModelRuntimeInfoService.RuntimeInfo runtime() { return runtimeInfo.current(); }
 
     @PostMapping("/chat")
     public AgentChatResult chat(

@@ -2,6 +2,7 @@
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import { Bot, CreditCard, Landmark, LogOut, ReceiptText, ShieldCheck, Sparkles } from 'lucide-vue-next'
 import { useAuthStore } from '@/stores/auth'
+import ModelRuntimeBadge from '@/components/ModelRuntimeBadge.vue'
 
 const auth = useAuthStore()
 const route = useRoute()
@@ -45,6 +46,7 @@ async function logout() {
     <main class="main-content">
       <header class="topbar">
         <div><span class="environment-dot"></span> 银行沙箱在线</div>
+        <ModelRuntimeBadge />
         <div class="assurance-badge" :class="auth.assuranceLevel.toLowerCase()">
           <ShieldCheck :size="15" />{{ auth.assuranceLevel }} 会话
         </div>

@@ -77,6 +77,19 @@ class ReadOnlyBankingAgentTest {
     }
 
     @Test
+    void selfIdentificationMustUseServerMetadataWithoutCallingModelOrBankingTools() {
+        Fixture fixture = fixture(scripted(request -> { throw new AssertionError("Model must not identify itself"); }));
+        when(fixture.runtimeInfo.isSelfQuestion("你接入deepseek了吗")).thenReturn(true);
+        when(fixture.runtimeInfo.answer()).thenReturn("当前服务端已配置接入 DeepSeek（deepseek-flash）");
+        var result = fixture.agent.chat(alice(), "你接入deepseek了吗", null);
+        assertThat(result.status()).isEqualTo(AgentStatus.SUCCESS);
+        assertThat(result.answer()).contains("DeepSeek", "deepseek-flash");
+        assertThat(result.usedTools()).isEmpty();
+        assertThat(result.pendingActions()).isEmpty();
+        assertThat(result.executionSummary()).contains("服务端运行配置");
+    }
+
+    @Test
     void accountQueryMustUseOnlySnapshotToolsAndReturnEvidenceGroundedAnswer() {
         ScriptedModel model = scripted(
                 request -> {
@@ -594,6 +607,7 @@ class ReadOnlyBankingAgentTest {
     }
 
     private static final class Fixture implements AutoCloseable {
+        private final ModelRuntimeInfoService runtimeInfo = mock(ModelRuntimeInfoService.class);
         private final ObjectMapper mapper = JsonMapper.builder().addModule(new JavaTimeModule()).build();
         private final Clock clock = Clock.fixed(Instant.parse("2026-09-02T00:00:00Z"), ZoneOffset.UTC);
         private final AgentProperties properties = properties();
@@ -624,7 +638,7 @@ class ReadOnlyBankingAgentTest {
                     model, policy, new SpringAiToolSchemaCatalog(registry), gateway, evidenceFactory,
                     new BillingAnalysisService(), new GroundedAnswerService(mapper, selector), selector,
                     new AgentConversationStore(properties, clock), orchestration, new TaskPlanValidator(),
-                    executor, mapper, properties, sandbox);
+                    executor, mapper, properties, sandbox, runtimeInfo);
         }
 
         @Override public void close() { executor.shutdown(); }

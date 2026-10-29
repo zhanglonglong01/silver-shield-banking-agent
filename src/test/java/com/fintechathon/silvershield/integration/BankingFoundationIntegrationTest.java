@@ -77,6 +77,16 @@ class BankingFoundationIntegrationTest {
     @LocalServerPort int port;
 
     @Test
+    void modelRuntimeMetadataMustRequireLoginAndExposeOnlySafeFields() {
+        assertThat(rest.getForEntity(url("/api/v1/agent/runtime"), JsonNode.class).getStatusCode())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
+        JsonNode info = get("/api/v1/agent/runtime", token("demo.alice", "Demo@2026!"));
+        assertThat(info.size()).isEqualTo(4);
+        assertThat(info.has("mode") && info.has("provider") && info.has("model") && info.has("configured")).isTrue();
+        assertThat(info.toString()).doesNotContain("api-key", "password", "signature", "http");
+    }
+
+    @Test
     void flywayMustApplyAllFoundationMigrations() {
         long applied = Arrays.stream(flyway.info().applied()).count();
         assertThat(applied).isEqualTo(5);
